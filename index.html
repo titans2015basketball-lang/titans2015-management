@@ -809,7 +809,7 @@ function openPlayerModal(id = null) {
 
 function editPlayer(id) { openPlayerModal(id); }
 
-function savePlayer() {
+async function savePlayer() {
   const fname = document.getElementById('p-fname').value.trim();
   const lname = document.getElementById('p-lname').value.trim();
   if (!fname) { toast('Συμπλήρωσε τουλάχιστον το όνομα', 'err'); return; }
@@ -834,7 +834,7 @@ function savePlayer() {
   toast(currentEditId ? 'Παίκτης ενημερώθηκε' : 'Παίκτης προστέθηκε');
 }
 
-function deletePlayer(id) {
+async function deletePlayer(id) {
   if (!confirm('Να διαγραφεί ο παίκτης; Θα χαθούν και οι πληρωμές του.')) return;
   await _deleteDoc('players', id);
   const charges = DB.get('charges').filter(c => c.playerId === id);
@@ -972,7 +972,7 @@ function _updateAutoPreview() {
     `Κάθε παίκτης θα χρεωθεί <b style="color:var(--accent)">${per === '–' ? per : per + '€'}</b> (${checked} παίκτες)`;
 }
 
-function saveGame() {
+async function saveGame() {
   const date     = document.getElementById('g-date').value;
   const opponent = document.getElementById('g-opponent').value.trim();
   const cost     = parseFloat(document.getElementById('g-cost').value);
@@ -1043,7 +1043,7 @@ function saveGame() {
   toast(`Αγώνας καταχωρήθηκε${chargesAdded ? ` · ${chargesAdded} παίκτες χρεώθηκαν` : ' (ταμείο)'}`);
 }
 
-function saveGameRecord(gameId, extra) {
+async function saveGameRecord(gameId, extra) {
   const games = DB.get('games');
   games.push({
     id: gameId,
@@ -1055,7 +1055,7 @@ function saveGameRecord(gameId, extra) {
   DB.set('games', games);
 }
 
-function deleteGame(id) {
+async function deleteGame(id) {
   if (!confirm('Να διαγραφεί ο αγώνας και οι χρεώσεις του;')) return;
   await _deleteDoc('games', id);
   const charges = DB.get('charges').filter(c => c.gameId === id);
@@ -1105,7 +1105,7 @@ function selectPayType(el, type) {
   document.getElementById('pay-type-hidden').value = type;
 }
 
-function savePayment() {
+async function savePayment() {
   const playerId = document.getElementById('pay-player').value;
   const amount = parseFloat(document.getElementById('pay-amount').value);
   if (!playerId || !amount) { toast('Συμπλήρωσε ποσό και παίκτη', 'err'); return; }
@@ -1124,7 +1124,7 @@ function savePayment() {
   toast('Πληρωμή καταχωρήθηκε ✓');
 }
 
-function deletePayment(id) {
+async function deletePayment(id) {
   if (!confirm('Να διαγραφεί η πληρωμή;')) return;
   await _deleteDoc('payments', id);
   renderPayments();
