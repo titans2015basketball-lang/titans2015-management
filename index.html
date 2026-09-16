@@ -586,36 +586,51 @@ tr:hover td { background: rgba(255,255,255,.02); }
 <div class="toast" id="toast"></div>
 
 <script>
-// ─── LOCAL DATA STORE (localStorage) ─────────────────────────────
-// Αντικαθίσταται με Firebase Firestore στο final deploy
+// ─── FIREBASE + FIRESTORE ────────────────────────────────────────
+const _cache = { players: [], games: [], charges: [], payments: [] };
 const DB = {
-  get: (k) => JSON.parse(localStorage.getItem('bsk_' + k) || '[]'),
-  set: (k, v) => localStorage.setItem('bsk_' + k, JSON.stringify(v)),
-  getObj: (k) => JSON.parse(localStorage.getItem('bsk_' + k) || '{}'),
-  setObj: (k, v) => localStorage.setItem('bsk_' + k, JSON.stringify(v))
+  get: (k) => _cache[k] || [],
+  set: async (k, arr) => {
+    _cache[k] = arr;
+    for (const item of arr) {
+      const { id, ...data } = item;
+      await window._fsSetDoc(window._fsDoc(window._fsDb, k, id), data);
+    }
+  },
+  getObj: (k) => _cache[k] || {},
 };
+async function _loadAll() {
+  for (const col of ['players','games','charges','payments']) {
+    const snap = await window._fsGetDocs(window._fsCollection(window._fsDb, col));
+    _cache[col] = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  }
+}
+async function _deleteDoc(col, id) {
+  _cache[col] = _cache[col].filter(i => i.id !== id);
+  await window._fsDeleteDoc(window._fsDoc(window._fsDb, col, id));
+}
 
-const ADMIN = { email: 'admin@omada.gr', pass: 'admin123' };
+
 let currentEditId = null;
 let gamesFilter = 'all';
 
 // ─── AUTH ─────────────────────────────────────────────────────────
-function doLogin() {
+async function doLogin() {
   const e = document.getElementById('login-email').value.trim();
   const p = document.getElementById('login-pass').value;
-  if (e === ADMIN.email && p === ADMIN.pass) {
-    document.getElementById('auth-screen').style.display = 'none';
-    document.getElementById('app').style.display = 'block';
-    loadAll();
-  } else {
-    const err = document.getElementById('auth-err');
-    err.textContent = 'Λάθος email ή κωδικός';
-    err.style.display = 'block';
+  const btn = document.querySelector('.auth-btn');
+  btn.textContent = 'Σύνδεση...'; btn.disabled = true;
+  try {
+    await window._authSignIn(window._auth, e, p);
+  } catch(err) {
+    const errEl = document.getElementById('auth-err');
+    errEl.textContent = 'Λάθος email ή κωδικός';
+    errEl.style.display = 'block';
+    btn.textContent = 'Σύνδεση'; btn.disabled = false;
   }
 }
-function doLogout() {
-  document.getElementById('auth-screen').style.display = 'flex';
-  document.getElementById('app').style.display = 'none';
+async function doLogout() {
+  await window._authSignOut(window._auth);
 }
 
 // ─── NAVIGATION ───────────────────────────────────────────────────
@@ -632,7 +647,8 @@ function showPage(name) {
 }
 
 // ─── LOAD ALL ─────────────────────────────────────────────────────
-function loadAll() {
+async function loadAll() {
+  await _loadAll();
   renderDashboard();
   renderPlayers();
 }
@@ -803,9 +819,11 @@ function savePlayer() {
 
 function deletePlayer(id) {
   if (!confirm('Να διαγραφεί ο παίκτης; Θα χαθούν και οι πληρωμές του.')) return;
-  DB.set('players', DB.get('players').filter(p => p.id !== id));
-  DB.set('charges', DB.get('charges').filter(c => c.playerId !== id));
-  DB.set('payments', DB.get('payments').filter(p => p.playerId !== id));
+  await _deleteDoc('players', id);
+  const charges = DB.get('charges').filter(c => c.playerId === id);
+  for(const c of charges) await _deleteDoc('charges', c.id);
+  const payments = DB.get('payments').filter(p => p.playerId === id);
+  for(const p of payments) await _deleteDoc('payments', p.id);
   renderPlayers();
   renderDashboard();
   toast('Παίκτης διαγράφηκε');
@@ -1022,8 +1040,9 @@ function saveGameRecord(gameId, extra) {
 
 function deleteGame(id) {
   if (!confirm('Να διαγραφεί ο αγώνας και οι χρεώσεις του;')) return;
-  DB.set('games', DB.get('games').filter(g => g.id !== id));
-  DB.set('charges', DB.get('charges').filter(c => c.gameId !== id));
+  await _deleteDoc('games', id);
+  const charges = DB.get('charges').filter(c => c.gameId === id);
+  for(const c of charges) await _deleteDoc('charges', c.id);
   renderGames();
   renderDashboard();
   toast('Αγώνας διαγράφηκε');
@@ -1090,7 +1109,7 @@ function savePayment() {
 
 function deletePayment(id) {
   if (!confirm('Να διαγραφεί η πληρωμή;')) return;
-  DB.set('payments', DB.get('payments').filter(p => p.id !== id));
+  await _deleteDoc('payments', id);
   renderPayments();
   renderDebts();
   renderDashboard();
@@ -1191,7 +1210,49 @@ function loadDemoData() {
   DB.set('payments', payments);
 }
 
-loadDemoData();
+
+</script>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+import { getFirestore, collection, getDocs, setDoc, deleteDoc, doc } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyBjcpLMBUdoTm0w2ibujwPvUXY3vwIKo_I",
+  authDomain: "titans-management.firebaseapp.com",
+  projectId: "titans-management",
+  storageBucket: "titans-management.firebasestorage.app",
+  messagingSenderId: "908542251689",
+  appId: "1:908542251689:web:567d525d4b4fa7062d0fb8"
+};
+
+const fbApp = initializeApp(firebaseConfig);
+const fsDb = getFirestore(fbApp);
+const fbAuth = getAuth(fbApp);
+
+// Expose to global scope
+window._fsDb = fsDb;
+window._auth = fbAuth;
+window._fsCollection = collection;
+window._fsGetDocs = getDocs;
+window._fsSetDoc = setDoc;
+window._fsDeleteDoc = deleteDoc;
+window._fsDoc = doc;
+window._authSignIn = signInWithEmailAndPassword;
+window._authSignOut = signOut;
+
+// Auth state listener
+onAuthStateChanged(fbAuth, async (user) => {
+  if (user) {
+    document.getElementById('auth-screen').style.display = 'none';
+    document.getElementById('app').style.display = 'block';
+    await loadAll();
+  } else {
+    document.getElementById('auth-screen').style.display = 'flex';
+    document.getElementById('app').style.display = 'none';
+  }
+});
 </script>
 </body>
 </html>
