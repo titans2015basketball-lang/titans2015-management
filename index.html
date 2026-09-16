@@ -586,9 +586,9 @@ tr:hover td { background: rgba(255,255,255,.02); }
 <div class="toast" id="toast"></div>
 
 <script type="module">
-import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-import { getFirestore, collection, getDocs, setDoc, deleteDoc, doc } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
-import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
+import { initializeApp } from "https://cdn.jsdelivr.net/npm/firebase@10.12.0/app/+esm";
+import { getFirestore, collection, getDocs, setDoc, deleteDoc, doc } from "https://cdn.jsdelivr.net/npm/firebase@10.12.0/firestore/+esm";
+import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "https://cdn.jsdelivr.net/npm/firebase@10.12.0/auth/+esm";
 
 const firebaseConfig = {
   apiKey: "AIzaSyBjcpLMBUdoTm0w2ibujwPvUXY3vwIKo_I",
@@ -641,8 +641,9 @@ async function doLogin() {
     await signInWithEmailAndPassword(fbAuth, e, p);
   } catch(err) {
     const errEl = document.getElementById('auth-err');
-    errEl.textContent = 'Λάθος email ή κωδικός';
+    errEl.textContent = err.code || 'Σφάλμα σύνδεσης';
     errEl.style.display = 'block';
+    console.error('Auth error:', err.code, err.message);
     btn.textContent = 'Σύνδεση'; btn.disabled = false;
   }
 }
