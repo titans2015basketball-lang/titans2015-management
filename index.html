@@ -228,6 +228,10 @@ tr:hover td { background: rgba(255,255,255,.02); }
   .main { margin-left: 60px; }
 }
 </style>
+
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
 </head>
 <body>
 
@@ -585,10 +589,7 @@ tr:hover td { background: rgba(255,255,255,.02); }
 <!-- Toast -->
 <div class="toast" id="toast"></div>
 
-<script type="module">
-import { initializeApp } from "https://cdn.jsdelivr.net/npm/firebase@10.12.0/app/+esm";
-import { getFirestore, collection, getDocs, setDoc, deleteDoc, doc } from "https://cdn.jsdelivr.net/npm/firebase@10.12.0/firestore/+esm";
-import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "https://cdn.jsdelivr.net/npm/firebase@10.12.0/auth/+esm";
+<script>
 
 const firebaseConfig = {
   apiKey: "AIzaSyBjcpLMBUdoTm0w2ibujwPvUXY3vwIKo_I",
@@ -598,10 +599,9 @@ const firebaseConfig = {
   messagingSenderId: "908542251689",
   appId: "1:908542251689:web:567d525d4b4fa7062d0fb8"
 };
-
-const fbApp = initializeApp(firebaseConfig);
-const fsDb = getFirestore(fbApp);
-const fbAuth = getAuth(fbApp);
+firebase.initializeApp(firebaseConfig);
+const fsDb = firebase.firestore();
+const fbAuth = firebase.auth();
 
 // ─── FIREBASE + FIRESTORE ────────────────────────────────────────
 const _cache = { players: [], games: [], charges: [], payments: [] };
@@ -611,20 +611,20 @@ const DB = {
     _cache[k] = arr;
     for (const item of arr) {
       const { id, ...data } = item;
-      await setDoc(doc(fsDb, k, id), data);
+      await fsDb.collection(k).doc(id).set(data);
     }
   },
   getObj: (k) => _cache[k] || {},
 };
 async function _loadAll() {
   for (const col of ['players','games','charges','payments']) {
-    const snap = await getDocs(collection(fsDb, col));
+    const snap = await fsDb.collection(col).get();
     _cache[col] = snap.docs.map(d => ({ id: d.id, ...d.data() }));
   }
 }
 async function _deleteDoc(col, id) {
   _cache[col] = _cache[col].filter(i => i.id !== id);
-  await deleteDoc(doc(fsDb, col, id));
+  await fsDb.collection(col).doc(id).delete();
 }
 
 
@@ -638,7 +638,7 @@ async function doLogin() {
   const btn = document.querySelector('.auth-btn');
   btn.textContent = 'Σύνδεση...'; btn.disabled = true;
   try {
-    await signInWithEmailAndPassword(fbAuth, e, p);
+    await fbAuth.signInWithEmailAndPassword(e, p);
   } catch(err) {
     const errEl = document.getElementById('auth-err');
     errEl.textContent = err.code || 'Σφάλμα σύνδεσης';
@@ -648,7 +648,7 @@ async function doLogin() {
   }
 }
 async function doLogout() {
-  await signOut(fbAuth);
+  await fbAuth.signOut();
 }
 
 // ─── NAVIGATION ───────────────────────────────────────────────────
@@ -1230,13 +1230,10 @@ function loadDemoData() {
 
 
 
-// ─── EVENT WIRING (module scope) ─────────────────────────────────
-document.getElementById('login-pass').addEventListener('keydown', e => { if(e.key==='Enter') doLogin(); });
-document.querySelector('.auth-btn').addEventListener('click', doLogin);
-document.querySelector('.logout-btn').addEventListener('click', doLogout);
+
 
 // ─── AUTH STATE ───────────────────────────────────────────────────
-onAuthStateChanged(fbAuth, async (user) => {
+fbAuth.onAuthStateChanged(async (user) => {
   if (user) {
     document.getElementById('auth-screen').style.display = 'none';
     document.getElementById('app').style.display = 'block';
@@ -1245,6 +1242,17 @@ onAuthStateChanged(fbAuth, async (user) => {
     document.getElementById('auth-screen').style.display = 'flex';
     document.getElementById('app').style.display = 'none';
   }
+});
+
+
+// Event wiring
+document.addEventListener('DOMContentLoaded', () => {
+  const loginPass = document.getElementById('login-pass');
+  const authBtn = document.querySelector('.auth-btn');
+  const logoutBtn = document.querySelector('.logout-btn');
+  if (loginPass) loginPass.addEventListener('keydown', e => { if(e.key==='Enter') doLogin(); });
+  if (authBtn) authBtn.addEventListener('click', doLogin);
+  if (logoutBtn) logoutBtn.addEventListener('click', doLogout);
 });
 </script>
 
