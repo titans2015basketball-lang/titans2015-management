@@ -638,7 +638,7 @@ async function doLogin() {
   const btn = document.querySelector('.auth-btn');
   btn.textContent = 'Σύνδεση...'; btn.disabled = true;
   try {
-    await fbAuthSignIn(fbAuth, e, p);
+    await signInWithEmailAndPassword(fbAuth, e, p);
   } catch(err) {
     const errEl = document.getElementById('auth-err');
     errEl.textContent = 'Λάθος email ή κωδικός';
@@ -647,7 +647,7 @@ async function doLogin() {
   }
 }
 async function doLogout() {
-  await fbAuthSignOut(fbAuth);
+  await signOut(fbAuth);
 }
 
 // ─── NAVIGATION ───────────────────────────────────────────────────
