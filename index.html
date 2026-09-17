@@ -374,7 +374,14 @@ tr:hover td { background: rgba(255,255,255,.02); }
           <h2>Παίκτες</h2>
           <p>Διαχείριση ρόστερ</p>
         </div>
-        <button class="btn btn-primary" onclick="openPlayerModal()">+ Νέος παίκτης</button>
+        <div style="display:flex;gap:8px;align-items:center">
+          <select class="form-select" id="filter-player-status" onchange="renderPlayers()" style="padding:8px 10px;font-size:13px">
+            <option value="">Όλοι</option>
+            <option value="active">🟢 Ενεργοί</option>
+            <option value="inactive">🔴 Ανενεργοί</option>
+          </select>
+          <button class="btn btn-primary" onclick="openPlayerModal()">+ Νέος παίκτης</button>
+        </div>
       </div>
       <div class="card">
         <table>
@@ -939,10 +946,19 @@ function renderDashboard() {
 
 // ─── PLAYERS ─────────────────────────────────────────────────────
 function renderPlayers() {
-  const players = DB.get('players');
+  const statusFilter = document.getElementById('filter-player-status')?.value || '';
+  let players = DB.get('players');
+  if (statusFilter) players = players.filter(p => p.status === statusFilter);
+  
+  // Sort: active first, then by name
+  players.sort((a,b) => {
+    if (a.status === b.status) return a.name.localeCompare(b.name, 'el');
+    return a.status === 'active' ? -1 : 1;
+  });
+
   const tb = document.getElementById('players-table');
   if (!players.length) {
-    tb.innerHTML = '<tr><td colspan="7"><div class="empty-state"><div class="emoji">👥</div>Δεν υπάρχουν παίκτες. Πρόσθεσε τον πρώτο!</div></td></tr>';
+    tb.innerHTML = '<tr><td colspan="7"><div class="empty-state"><div class="emoji">👥</div>Δεν υπάρχουν παίκτες</div></td></tr>';
     return;
   }
   tb.innerHTML = players.map(p => {
@@ -952,7 +968,7 @@ function renderPlayers() {
       : bal > 0
       ? `<span style="color:var(--green);font-weight:600">+${bal.toFixed(0)}€</span>`
       : `<span style="color:var(--text3)">0€</span>`;
-    return `<tr style="cursor:pointer" onclick="openPlayerCard('${p.id}')">
+    return `<tr style="cursor:pointer;opacity:${p.status==='active'?1:0.6}" onclick="openPlayerCard('${p.id}')">
       <td><b>#${p.jersey || '–'}</b></td>
       <td><b>${p.name}</b> <span style="font-size:11px;color:var(--text3)">→ καρτέλα</span></td>
       <td>${p.phone || '–'}</td>
@@ -960,11 +976,22 @@ function renderPlayers() {
       <td>${p.status === 'active' ? '<span class="badge badge-green">Ενεργός</span>' : '<span class="badge badge-red">Ανενεργός</span>'}</td>
       <td>${balHtml}</td>
       <td onclick="event.stopPropagation()">
+        <button class="btn btn-ghost btn-sm" onclick="togglePlayerStatus('${p.id}','${p.status}')" title="${p.status==='active'?'Κάνε ανενεργό':'Κάνε ενεργό'}">${p.status==='active'?'🔴':'🟢'}</button>
         <button class="btn btn-ghost btn-sm" onclick="editPlayer('${p.id}')">✏️</button>
         <button class="btn btn-danger btn-sm" onclick="deletePlayer('${p.id}')">🗑️</button>
       </td>
     </tr>`;
   }).join('');
+}
+
+async function togglePlayerStatus(id, currentStatus) {
+  const players = DB.get('players');
+  const idx = players.findIndex(p => p.id === id);
+  if (idx === -1) return;
+  players[idx].status = currentStatus === 'active' ? 'inactive' : 'active';
+  await DB.set('players', players);
+  renderPlayers();
+  toast(`Παίκτης ${players[idx].status === 'active' ? 'ενεργοποιήθηκε' : 'απενεργοποιήθηκε'}`);
 }
 
 // ─── ΚΑΡΤΕΛΑ ΠΑΙΚΤΗ ──────────────────────────────────────────────
@@ -1026,14 +1053,12 @@ async function openPlayerCard(playerId) {
   document.getElementById('pc-history-loading').style.display = 'block';
   document.getElementById('pc-history').style.display = 'none';
 
-  // Load history from Firestore
+  // Load history from Firestore - search by playerId directly
   try {
-    const playerDocId = player.name.replace(/[^a-zA-Z0-9Α-Ωα-ωΆ-ώ]/g, '_').substring(0,50);
-    const doc = await fsDb.collection('history').doc(playerDocId).get();
+    const doc = await fsDb.collection('history').doc(playerId).get();
     if (doc.exists) {
       const data = doc.data();
       const records = data.records || [];
-      // Group by season
       const bySeason = {};
       records.forEach(r => {
         const s = r.season || 'Άγνωστο';
@@ -1047,8 +1072,7 @@ async function openPlayerCard(playerId) {
         const total = recs.reduce((s,r) => s + (r.amount||0), 0);
         html += `<div style="margin-bottom:12px">
           <div style="font-weight:600;font-size:13px;color:var(--accent);margin-bottom:6px">📅 Σεζόν ${season} — <span style="color:var(--green)">${total.toFixed(0)}€</span></div>
-          <table style="width:100%;font-size:12px">
-          <tbody>`;
+          <table style="width:100%;font-size:12px"><tbody>`;
         recs.sort((a,b) => a.date > b.date ? 1 : -1).forEach(r => {
           const types = r.type ? r.type.split(',').filter(Boolean).map(t => typeLabel(t)).join(' ') : '';
           html += `<tr>
@@ -1066,7 +1090,7 @@ async function openPlayerCard(playerId) {
       document.getElementById('pc-history-loading').textContent = '📭 Δεν υπάρχει ιστορικό για αυτόν τον παίκτη';
     }
   } catch(e) {
-    document.getElementById('pc-history-loading').textContent = '❌ Σφάλμα φόρτωσης: ' + e.message;
+    document.getElementById('pc-history-loading').textContent = '❌ Σφάλμα: ' + e.message;
   }
 }
 
