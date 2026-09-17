@@ -230,7 +230,16 @@ tr:hover td { background: rgba(255,255,255,.02); }
     z-index: 9999 !important; padding: 0 !important;
   }
   .sidebar-logo { display: none !important; }
-  .sidebar-footer { display: none !important; }
+  .sidebar-footer { display: flex !important; padding: 0 !important; border: none !important; align-items: center !important; }
+  .logout-btn { 
+    width: 44px !important; height: 44px !important; 
+    border-radius: 50% !important; padding: 0 !important;
+    font-size: 18px !important; display: flex !important;
+    align-items: center !important; justify-content: center !important;
+    border: 1px solid var(--border) !important;
+  }
+  .logout-text { display: none !important; }
+  .logout-icon { display: block !important; }
   nav {
     display: flex !important; flex-direction: row !important;
     align-items: center !important; justify-content: space-around !important;
@@ -309,7 +318,7 @@ tr:hover td { background: rgba(255,255,255,.02); }
       </div>
     </nav>
     <div class="sidebar-footer">
-      <button class="logout-btn">🚪 Αποσύνδεση</button>
+      <button class="logout-btn"><span class="logout-text"> Αποσύνδεση</span><span class="logout-icon">🚪</span></button>
     </div>
   </div>
 
