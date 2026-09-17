@@ -730,8 +730,34 @@ tr:hover td { background: rgba(255,255,255,.02); }
   </div>
 </div>
 
-<!-- Toast -->
-<div class="toast" id="toast"></div>
+<!-- Player Card Modal -->
+<div class="modal-overlay" id="player-card-modal">
+  <div class="modal" style="width:620px;max-width:98vw">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
+      <div>
+        <h3 id="pc-name" style="margin:0;font-size:20px"></h3>
+        <div id="pc-meta" style="color:var(--text2);font-size:13px;margin-top:4px"></div>
+      </div>
+      <button class="btn btn-ghost btn-sm" onclick="closeModal('player-card-modal')">✕ Κλείσιμο</button>
+    </div>
+
+    <!-- Σύνοψη -->
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:18px" id="pc-stats"></div>
+
+    <!-- Τρέχουσα σεζόν -->
+    <div class="card" style="margin-bottom:14px">
+      <div class="card-title">💰 Τρέχουσα σεζόν — Χρεώσεις & Πληρωμές</div>
+      <div id="pc-current"></div>
+    </div>
+
+    <!-- Ιστορικό ανά σεζόν -->
+    <div class="card">
+      <div class="card-title">📋 Ιστορικό πληρωμών ανά σεζόν</div>
+      <div id="pc-history-loading" style="text-align:center;color:var(--text3);padding:20px">⏳ Φόρτωση ιστορικού...</div>
+      <div id="pc-history" style="display:none"></div>
+    </div>
+  </div>
+</div>
 
 <script>
 
@@ -926,19 +952,122 @@ function renderPlayers() {
       : bal > 0
       ? `<span style="color:var(--green);font-weight:600">+${bal.toFixed(0)}€</span>`
       : `<span style="color:var(--text3)">0€</span>`;
-    return `<tr>
+    return `<tr style="cursor:pointer" onclick="openPlayerCard('${p.id}')">
       <td><b>#${p.jersey || '–'}</b></td>
-      <td><b>${p.name}</b></td>
+      <td><b>${p.name}</b> <span style="font-size:11px;color:var(--text3)">→ καρτέλα</span></td>
       <td>${p.phone || '–'}</td>
       <td style="color:var(--text2)">${p.email || '–'}</td>
       <td>${p.status === 'active' ? '<span class="badge badge-green">Ενεργός</span>' : '<span class="badge badge-red">Ανενεργός</span>'}</td>
       <td>${balHtml}</td>
-      <td>
+      <td onclick="event.stopPropagation()">
         <button class="btn btn-ghost btn-sm" onclick="editPlayer('${p.id}')">✏️</button>
         <button class="btn btn-danger btn-sm" onclick="deletePlayer('${p.id}')">🗑️</button>
       </td>
     </tr>`;
   }).join('');
+}
+
+// ─── ΚΑΡΤΕΛΑ ΠΑΙΚΤΗ ──────────────────────────────────────────────
+async function openPlayerCard(playerId) {
+  const player = DB.get('players').find(p => p.id === playerId);
+  if (!player) return;
+
+  // Basic info
+  document.getElementById('pc-name').textContent = player.name;
+  document.getElementById('pc-meta').textContent = `#${player.jersey || '–'} · ${player.phone || ''} · ${player.status === 'active' ? '🟢 Ενεργός' : '🔴 Ανενεργός'}`;
+
+  // Current season charges & payments
+  const charges = DB.get('charges').filter(c => c.playerId === playerId);
+  const payments = DB.get('payments').filter(p => p.playerId === playerId);
+  const totalCharged = charges.reduce((s,c) => s + (c.amount||0), 0);
+  const totalPaid = payments.reduce((s,p) => s + (p.amount||0), 0);
+  const bal = totalPaid - totalCharged;
+
+  document.getElementById('pc-stats').innerHTML = `
+    <div style="background:rgba(239,68,68,.1);border-radius:8px;padding:12px;text-align:center">
+      <div style="font-size:20px;font-weight:700;color:var(--red)">${totalCharged.toFixed(0)}€</div>
+      <div style="font-size:12px;color:var(--text2)">Χρεώσεις</div>
+    </div>
+    <div style="background:rgba(34,197,94,.1);border-radius:8px;padding:12px;text-align:center">
+      <div style="font-size:20px;font-weight:700;color:var(--green)">${totalPaid.toFixed(0)}€</div>
+      <div style="font-size:12px;color:var(--text2)">Πληρωμές</div>
+    </div>
+    <div style="background:rgba(245,158,11,.1);border-radius:8px;padding:12px;text-align:center">
+      <div style="font-size:20px;font-weight:700;color:${bal>=0?'var(--green)':'var(--red)'}">${bal>=0?'+':''}${bal.toFixed(0)}€</div>
+      <div style="font-size:12px;color:var(--text2)">Υπόλοιπο</div>
+    </div>`;
+
+  // Current charges
+  const games = DB.get('games');
+  let currentHtml = '';
+  if (charges.length) {
+    currentHtml += '<table style="width:100%;font-size:13px"><thead><tr><th>Ημ/νία</th><th>Αγώνας</th><th>Χρέωση</th></tr></thead><tbody>';
+    charges.forEach(c => {
+      const g = games.find(x => x.id === c.gameId);
+      currentHtml += `<tr><td>${fmtDate(c.date)}</td><td style="color:var(--text2)">${c.description||'–'}</td><td style="color:var(--red);font-weight:600">-${c.amount.toFixed(0)}€</td></tr>`;
+    });
+    currentHtml += '</tbody></table>';
+  } else {
+    currentHtml = '<div style="color:var(--text3);font-size:13px;padding:10px">Δεν υπάρχουν χρεώσεις ακόμα</div>';
+  }
+  if (payments.length) {
+    currentHtml += '<div style="margin-top:12px;font-size:13px;font-weight:600;color:var(--text2)">Πληρωμές:</div>';
+    currentHtml += '<table style="width:100%;font-size:13px"><tbody>';
+    payments.forEach(p => {
+      const types = (p.types || p.type || '').split(',').filter(Boolean).map(t => typeLabel(t)).join(' ');
+      currentHtml += `<tr><td>${fmtDate(p.date)}</td><td>${types || '–'}</td><td style="color:var(--green);font-weight:600">+${p.amount.toFixed(0)}€</td></tr>`;
+    });
+    currentHtml += '</tbody></table>';
+  }
+  document.getElementById('pc-current').innerHTML = currentHtml;
+
+  // Show modal
+  document.getElementById('player-card-modal').classList.add('open');
+  document.getElementById('pc-history-loading').style.display = 'block';
+  document.getElementById('pc-history').style.display = 'none';
+
+  // Load history from Firestore
+  try {
+    const playerDocId = player.name.replace(/[^a-zA-Z0-9Α-Ωα-ωΆ-ώ]/g, '_').substring(0,50);
+    const doc = await fsDb.collection('history').doc(playerDocId).get();
+    if (doc.exists) {
+      const data = doc.data();
+      const records = data.records || [];
+      // Group by season
+      const bySeason = {};
+      records.forEach(r => {
+        const s = r.season || 'Άγνωστο';
+        if (!bySeason[s]) bySeason[s] = [];
+        bySeason[s].push(r);
+      });
+      const seasons = Object.keys(bySeason).sort().reverse();
+      let html = `<div style="margin-bottom:10px;font-size:13px;color:var(--text2)">Συνολικά έδωσε: <b style="color:var(--accent)">${data.totalAmount?.toFixed(0)||0}€</b> σε ${records.length} εγγραφές</div>`;
+      seasons.forEach(season => {
+        const recs = bySeason[season];
+        const total = recs.reduce((s,r) => s + (r.amount||0), 0);
+        html += `<div style="margin-bottom:12px">
+          <div style="font-weight:600;font-size:13px;color:var(--accent);margin-bottom:6px">📅 Σεζόν ${season} — <span style="color:var(--green)">${total.toFixed(0)}€</span></div>
+          <table style="width:100%;font-size:12px">
+          <tbody>`;
+        recs.sort((a,b) => a.date > b.date ? 1 : -1).forEach(r => {
+          const types = r.type ? r.type.split(',').filter(Boolean).map(t => typeLabel(t)).join(' ') : '';
+          html += `<tr>
+            <td style="color:var(--text3);width:90px">${fmtDate(r.date)}</td>
+            <td style="color:var(--text2);font-size:11px">${r.description?.substring(0,80)||'–'}</td>
+            <td style="color:var(--green);font-weight:600;white-space:nowrap">+${(r.amount||0).toFixed(0)}€</td>
+          </tr>`;
+        });
+        html += '</tbody></table></div>';
+      });
+      document.getElementById('pc-history').innerHTML = html;
+      document.getElementById('pc-history').style.display = 'block';
+      document.getElementById('pc-history-loading').style.display = 'none';
+    } else {
+      document.getElementById('pc-history-loading').textContent = '📭 Δεν υπάρχει ιστορικό για αυτόν τον παίκτη';
+    }
+  } catch(e) {
+    document.getElementById('pc-history-loading').textContent = '❌ Σφάλμα φόρτωσης: ' + e.message;
+  }
 }
 
 function openPlayerModal(id = null) {
