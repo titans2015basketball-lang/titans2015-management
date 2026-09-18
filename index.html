@@ -376,7 +376,7 @@ tr:hover td { background: rgba(255,255,255,.02); }
         </div>
         <div style="display:flex;gap:8px;align-items:center">
           <select class="form-select" id="filter-player-status" onchange="renderPlayers()" style="padding:8px 10px;font-size:13px">
-            <option value="">Όλοι</option>
+            <option value="" selected>👥 Όλοι</option>
             <option value="active">🟢 Ενεργοί</option>
             <option value="inactive">🔴 Ανενεργοί</option>
           </select>
@@ -1388,19 +1388,24 @@ function setPayCat(cat) {
   document.getElementById('pay-cat-expense').className = cat === 'expense' ? 'btn btn-danger' : 'btn btn-ghost';
 }
 
-function _fillPlayerSelect() {
-  const players = DB.get('players').filter(p => p.status === 'active');
-  document.getElementById('pay-player').innerHTML = players.map(p => `<option value="${p.id}">${p.name}</option>`).join('');
-  // Also fill filter dropdown
+function _fillPlayerSelect(includeAll = false) {
+  const players = DB.get('players').filter(p => includeAll || p.status === 'active');
+  document.getElementById('pay-player').innerHTML = players.map(p =>
+    `<option value="${p.id}">${p.name}${p.status === 'inactive' ? ' (ανενεργός)' : ''}</option>`
+  ).join('');
+  // Also fill filter dropdown (active only)
   const fp = document.getElementById('filter-pay-player');
-  if (fp) fp.innerHTML = '<option value="">👤 Όλοι οι παίκτες</option>' + players.map(p => `<option value="${p.id}">${p.name}</option>`).join('');
+  const activePlayers = DB.get('players').filter(p => p.status === 'active');
+  if (fp) fp.innerHTML = '<option value="">👤 Όλοι οι παίκτες</option>' + activePlayers.map(p => `<option value="${p.id}">${p.name}</option>`).join('');
 }
 
 function openPaymentModal(editId = null) {
   _editPayId = editId;
-  _fillPlayerSelect();
+  // Include inactive players when editing (they may have old payments)
+  _fillPlayerSelect(!!editId);
   document.getElementById('pay-modal-title').textContent = editId ? 'Επεξεργασία Πληρωμής' : 'Νέα Πληρωμή από Παίκτη';
   document.getElementById('pay-save-btn').textContent = editId ? 'Ενημέρωση' : 'Αποθήκευση';
+  // Reset fields
   document.getElementById('pay-amount').value = '';
   document.getElementById('pay-note').value = '';
   document.getElementById('pay-date').value = new Date().toISOString().split('T')[0];
@@ -1410,11 +1415,15 @@ function openPaymentModal(editId = null) {
   if (editId) {
     const pay = DB.get('payments').find(p => p.id === editId);
     if (pay) {
-      document.getElementById('pay-amount').value = pay.amount;
+      document.getElementById('pay-amount').value = Math.abs(pay.amount);
       document.getElementById('pay-note').value = pay.note || '';
-      document.getElementById('pay-date').value = pay.date;
-      document.getElementById('pay-player').value = pay.playerId || '';
-      const types = (pay.types || pay.type || '').split(',');
+      // Ensure date is in YYYY-MM-DD format
+      const dateVal = pay.date ? pay.date.substring(0, 10) : new Date().toISOString().split('T')[0];
+      document.getElementById('pay-date').value = dateVal;
+      if (pay.playerId) {
+        document.getElementById('pay-player').value = pay.playerId;
+      }
+      const types = (pay.types || pay.type || '').split(',').filter(Boolean);
       document.querySelectorAll('.pay-type-cb').forEach(cb => { cb.checked = types.includes(cb.value); });
     }
   }
@@ -1475,12 +1484,18 @@ async function savePayment() {
 
   const payments = DB.get('payments');
   if (_editPayId) {
+    // Update only the edited record
     const idx = payments.findIndex(p => p.id === _editPayId);
     if (idx !== -1) payments[idx] = record;
+    _cache['payments'] = payments;
+    const { id, ...data } = record;
+    await fsDb.collection('payments').doc(id).set(data);
   } else {
     payments.push(record);
+    _cache['payments'] = payments;
+    const { id, ...data } = record;
+    await fsDb.collection('payments').doc(id).set(data);
   }
-  await DB.set('payments', payments);
   closeModal('payment-modal');
   renderPayments();
   renderDebts();
