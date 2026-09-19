@@ -345,7 +345,7 @@ tr:hover td { background: rgba(255,255,255,.02); }
         <div class="stat-card">
           <div class="icon">💵</div>
           <div class="val" id="stat-collected">0€</div>
-          <div class="lbl">Εισπράχθηκαν</div>
+          <div class="lbl">Ταμείο</div>
           <div class="accent-bar" style="background:var(--green)"></div>
         </div>
         <div class="stat-card">
@@ -896,7 +896,12 @@ function renderDashboard() {
   const payments = DB.get('payments');
   const allPlayers = DB.get('players');
 
-  const totalCollected = payments.reduce((s, p) => s + (p.amount || 0), 0);
+  // Ταμείο = εισπράξεις + αρχικό υπόλοιπο - έξοδα
+  const totalIn = payments.filter(p => !p.isInitialBalance && !p.isExpense).reduce((s, p) => s + (p.amount || 0), 0);
+  const totalOut = payments.filter(p => p.isExpense && !p.isInitialBalance).reduce((s, p) => s + Math.abs(p.amount || 0), 0);
+  const initialBal = payments.filter(p => p.isInitialBalance).reduce((s, p) => s + (p.amount || 0), 0);
+  const tamio = totalIn + initialBal - totalOut;
+
   let totalDebts = 0;
   allPlayers.forEach(p => {
     const bal = getBalance(p.id);
@@ -905,7 +910,7 @@ function renderDashboard() {
 
   document.getElementById('stat-players').textContent = players.length;
   document.getElementById('stat-games').textContent = games.length;
-  document.getElementById('stat-collected').textContent = totalCollected + '€';
+  document.getElementById('stat-collected').textContent = (tamio >= 0 ? '+' : '') + tamio.toFixed(0) + '€';
   document.getElementById('stat-debts').textContent = totalDebts.toFixed(0) + '€';
 
   // Recent games
@@ -1537,9 +1542,9 @@ function renderPayments() {
   const fFrom = document.getElementById('filter-pay-from')?.value;
   const fTo = document.getElementById('filter-pay-to')?.value;
 
-  if (fPlayer) payments = payments.filter(p => p.playerId === fPlayer);
-  if (fType === 'expense') payments = payments.filter(p => p.isExpense);
-  else if (fType) payments = payments.filter(p => (p.types || p.type || '').includes(fType));
+  if (fPlayer) payments = payments.filter(p => p.playerId === fPlayer && !p.isInitialBalance);
+  if (fType === 'expense') payments = payments.filter(p => p.isExpense && !p.isInitialBalance);
+  else if (fType) payments = payments.filter(p => (p.types || p.type || '').includes(fType) && !p.isInitialBalance);
   if (fFrom) payments = payments.filter(p => p.date >= fFrom);
   if (fTo) payments = payments.filter(p => p.date <= fTo);
 
@@ -1576,24 +1581,38 @@ function renderPayments() {
 
   tb.innerHTML = payments.map(pay => {
     const p = players.find(x => x.id === pay.playerId);
-    const nameCell = pay.isExpense
-      ? `<span style="color:var(--red)">📤 ${pay.expenseTo || 'Έξοδο'}</span>`
-      : `<b>${p?.name || 'Άγνωστος'}</b>`;
-    const amountCell = pay.isExpense
-      ? `<span style="color:var(--red);font-weight:600">-${Math.abs(pay.amount)}€</span>`
-      : `<span style="color:var(--green);font-weight:600">+${pay.amount}€</span>`;
+    let nameCell, amountCell, actionsCell;
+
+    if (pay.isInitialBalance) {
+      nameCell = `<span style="color:var(--accent)">⚙️ ${pay.note || 'Αρχικό υπόλοιπο'}</span>`;
+      amountCell = pay.amount >= 0
+        ? `<span style="color:var(--green);font-weight:600">+${pay.amount}€</span>`
+        : `<span style="color:var(--red);font-weight:600">${pay.amount}€</span>`;
+      actionsCell = `<button class="btn btn-ghost btn-sm" onclick="openModal('balance-modal')">✏️</button>`;
+    } else if (pay.isExpense) {
+      nameCell = `<span style="color:var(--red)">📤 ${pay.expenseTo || 'Έξοδο'}</span>`;
+      amountCell = `<span style="color:var(--red);font-weight:600">-${Math.abs(pay.amount)}€</span>`;
+      actionsCell = `
+        <button class="btn btn-ghost btn-sm" onclick="openPaymentModal('${pay.id}')">✏️</button>
+        <button class="btn btn-danger btn-sm" onclick="deletePayment('${pay.id}')">🗑️</button>`;
+    } else {
+      nameCell = `<b>${p?.name || 'Άγνωστος'}</b>`;
+      amountCell = `<span style="color:var(--green);font-weight:600">+${pay.amount}€</span>`;
+      actionsCell = `
+        <button class="btn btn-ghost btn-sm" onclick="openPaymentModal('${pay.id}')">✏️</button>
+        <button class="btn btn-danger btn-sm" onclick="deletePayment('${pay.id}')">🗑️</button>`;
+    }
+
     const types = (pay.types || pay.type || '').split(',').filter(Boolean);
-    const typeHtml = types.length ? types.map(t => typeLabel(t)).join(' ') : '–';
-    return `<tr>
+    const typeHtml = pay.isInitialBalance ? '<span style="color:var(--accent);font-size:11px">ΥΠΟΛΟΙΠΟ</span>'
+      : types.length ? types.map(t => typeLabel(t)).join(' ') : '–';
+    return `<tr${pay.isInitialBalance ? ' style="background:rgba(var(--accent-rgb,99,102,241),0.06)"' : ''}>
       <td>${fmtDate(pay.date)}</td>
       <td>${nameCell}</td>
       <td>${amountCell}</td>
       <td>${typeHtml}</td>
       <td style="color:var(--text2);max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${pay.note || '–'}</td>
-      <td style="white-space:nowrap">
-        <button class="btn btn-ghost btn-sm" onclick="openPaymentModal('${pay.id}')">✏️</button>
-        <button class="btn btn-danger btn-sm" onclick="deletePayment('${pay.id}')">🗑️</button>
-      </td>
+      <td style="white-space:nowrap">${actionsCell}</td>
     </tr>`;
   }).join('');
 }
@@ -1604,12 +1623,11 @@ async function saveBalance() {
   const season = document.getElementById('bal-season').value.trim() || '2026-27';
   if (isNaN(amount)) { toast('Βάλε ποσό', 'err'); return; }
 
-  // Αποθήκευση ως ειδική εγγραφή στο payments
-  const payments = DB.get('payments');
-  // Αφαίρεσε παλιό αρχικό υπόλοιπο αν υπάρχει
-  const filtered = payments.filter(p => p.type !== 'initial_balance');
-  filtered.unshift({
-    id: 'initial_balance_' + uid(),
+  // Χρησιμοποίησε ΣΤΑΘΕΡΟ id για το αρχικό υπόλοιπο
+  const BALANCE_ID = 'initial_balance_fixed';
+
+  const record = {
+    id: BALANCE_ID,
     playerId: null,
     isExpense: amount < 0,
     isInitialBalance: true,
@@ -1619,8 +1637,26 @@ async function saveBalance() {
     type: 'initial_balance',
     types: '',
     note: `Αρχικό υπόλοιπο σεζόν ${season}: ${amount}€`
-  });
-  await DB.set('payments', filtered);
+  };
+
+  // Ενημέρωσε cache
+  const payments = DB.get('payments');
+  const idx = payments.findIndex(p => p.id === BALANCE_ID || p.type === 'initial_balance');
+  if (idx !== -1) {
+    // Διέγραψε το παλιό από Firestore αν έχει διαφορετικό id
+    if (payments[idx].id !== BALANCE_ID) {
+      await fsDb.collection('payments').doc(payments[idx].id).delete();
+    }
+    payments[idx] = record;
+  } else {
+    payments.unshift(record);
+  }
+  _cache['payments'] = payments;
+
+  // Γράψε μόνο αυτό το document στο Firestore
+  const { id, ...data } = record;
+  await fsDb.collection('payments').doc(id).set(data);
+
   closeModal('balance-modal');
   renderPayments();
   renderDashboard();
