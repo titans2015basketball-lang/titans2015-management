@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="el">
+<head><meta charset="UTF-8"><title>Debug Payments</title>
+<style>body{font-family:monospace;background:#111;color:#eee;padding:20px} table{width:100%;border-collapse:collapse} td,th{border:1px solid #333;padding:6px 10px;font-size:13px} th{background:#222} tr:hover{background:#1a1a1a} .red{color:#f87} .green{color:#4f4} .orange{color:#fa0}</style>
+</head>
+<body>
+<h2>🔍 Debug Πληρωμών Firebase</h2>
+<div id="log"></div>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script>
+firebase.initializeApp({
+  apiKey: "AIzaSyBjcpLMBUdoTm0w2ibujwPvUXY3vwIKo_I",
+  authDomain: "titans-management.firebaseapp.com",
+  projectId: "titans-management",
+  storageBucket: "titans-management.firebasestorage.app",
+  messagingSenderId: "908542251689",
+  appId: "1:908542251689:web:567d525d4b4fa7062d0fb8"
+});
+const db = firebase.firestore();
+
+async function run() {
+  const snap = await db.collection('payments').get();
+  const all = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  
+  // Ταξινόμηση
+  all.sort((a,b) => (a.date||'').localeCompare(b.date||''));
+  
+  let total = 0;
+  let html = `<p>Σύνολο εγγραφών: <b>${all.length}</b></p>`;
+  html += `<table><tr><th>ID</th><th>Τύπος</th><th>Παίκτης/Σημ.</th><th>Ποσό</th><th>Ημερ.</th></tr>`;
+  
+  all.forEach(p => {
+    const isBalance = p.isInitialBalance || p.type === 'initial_balance';
+    const isExpense = p.isExpense && !isBalance;
+    const amt = p.amount || 0;
+    total += amt;
+    
+    const color = isBalance ? 'orange' : isExpense ? 'red' : 'green';
+    const type = isBalance ? '⚙️ ΑΡΧΙΚΟ' : isExpense ? '📤 Έξοδο' : '💰 Πληρωμή';
+    const who = p.note || p.expenseTo || p.playerId || '–';
+    
+    html += `<tr><td style="font-size:10px;color:#888">${p.id}</td><td class="${color}">${type}</td><td>${who}</td><td class="${color}">${amt}€</td><td>${p.date||'–'}</td></tr>`;
+  });
+  
+  html += `</table>`;
+  html += `<p style="margin-top:20px;font-size:16px">➕ Άθροισμα όλων: <b style="color:${total>=0?'#4f4':'#f87'}">${total}€</b></p>`;
+  
+  // Αρχικά υπόλοιπα
+  const balances = all.filter(p => p.isInitialBalance || p.type === 'initial_balance');
+  if (balances.length > 1) {
+    html += `<p class="red">⚠️ ΠΡΟΒΛΗΜΑ: ${balances.length} αρχικά υπόλοιπα! Πάτα το κουμπί παρακάτω.</p>`;
+    html += `<button onclick="fixBalances()" style="background:#f00;color:#fff;padding:10px 20px;font-size:16px;border:none;cursor:pointer;border-radius:6px">🔧 Διόρθωσε τα duplicates τώρα</button>`;
+  }
+  
+  document.getElementById('log').innerHTML = html;
+  window._all = all;
+  window._balances = balances;
+}
+
+async function fixBalances() {
+  const balances = window._balances;
+  // Κράτα μόνο το τελευταίο
+  const toKeep = balances[balances.length - 1];
+  const toDelete = balances.filter(b => b.id !== toKeep.id);
+  
+  for (const b of toDelete) {
+    await db.collection('payments').doc(b.id).delete();
+    console.log('Deleted:', b.id);
+  }
+  
+  // Βάλε σταθερό id
+  if (toKeep.id !== 'initial_balance_fixed') {
+    const { id, ...data } = toKeep;
+    await db.collection('payments').doc('initial_balance_fixed').set(data);
+    await db.collection('payments').doc(toKeep.id).delete();
+  }
+  
+  alert('✅ Διορθώθηκε! Ανανέωσε τη σελίδα.');
+  location.reload();
+}
+
+run().catch(e => { document.getElementById('log').innerHTML = '<p style="color:red">❌ ' + e.message + '</p>'; });
+</script>
+</body>
+</html>
