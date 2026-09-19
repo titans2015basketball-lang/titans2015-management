@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="el">
+<head><meta charset="UTF-8"><title>Cleanup Balance</title></head>
+<body>
+<h2>🧹 Cleanup Αρχικού Υπολοίπου</h2>
+<div id="log" style="font-family:monospace;white-space:pre-wrap;background:#111;color:#0f0;padding:20px;border-radius:8px;min-height:200px"></div>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script>
+const firebaseConfig = {
+  apiKey: "AIzaSyBjcpLMBUdoTm0w2ibujwPvUXY3vwIKo_I",
+  authDomain: "titans-management.firebaseapp.com",
+  projectId: "titans-management",
+  storageBucket: "titans-management.firebasestorage.app",
+  messagingSenderId: "908542251689",
+  appId: "1:908542251689:web:567d525d4b4fa7062d0fb8"
+};
+firebase.initializeApp(firebaseConfig);
+const db = firebase.firestore();
+
+function log(msg) {
+  document.getElementById('log').textContent += msg + '\n';
+}
+
+async function cleanup() {
+  log('🔍 Φόρτωση πληρωμών...');
+  const snap = await db.collection('payments').get();
+  const allPayments = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  
+  log(`📋 Βρέθηκαν ${allPayments.length} συνολικά εγγραφές`);
+  
+  // Βρες όλα τα αρχικά υπόλοιπα
+  const balances = allPayments.filter(p => 
+    p.type === 'initial_balance' || 
+    p.isInitialBalance === true ||
+    (p.id && p.id.startsWith('initial_balance_'))
+  );
+  
+  log(`⚙️ Βρέθηκαν ${balances.length} εγγραφές αρχικού υπολοίπου:`);
+  balances.forEach(b => log(`  - id: ${b.id} | amount: ${b.amount}€ | date: ${b.date}`));
+  
+  if (balances.length === 0) {
+    log('✅ Δεν υπάρχουν duplicates!');
+    return;
+  }
+  
+  if (balances.length === 1) {
+    log('✅ Υπάρχει μόνο ένα — δεν χρειάζεται cleanup');
+    return;
+  }
+  
+  // Κράτα το τελευταίο (ή αυτό με id initial_balance_fixed αν υπάρχει)
+  const fixed = balances.find(b => b.id === 'initial_balance_fixed');
+  const toKeep = fixed || balances[balances.length - 1];
+  const toDelete = balances.filter(b => b.id !== toKeep.id);
+  
+  log(`\n✅ Κρατάω: id=${toKeep.id} | amount=${toKeep.amount}€`);
+  log(`🗑️ Διαγράφω ${toDelete.length} duplicates...`);
+  
+  for (const b of toDelete) {
+    await db.collection('payments').doc(b.id).delete();
+    log(`  ✅ Διαγράφηκε: ${b.id}`);
+  }
+  
+  // Αν το kept δεν έχει id=initial_balance_fixed, μετονομάστε το
+  if (toKeep.id !== 'initial_balance_fixed') {
+    log(`\n🔄 Μετατρέπω σε σταθερό id...`);
+    const { id, ...data } = toKeep;
+    await db.collection('payments').doc('initial_balance_fixed').set(data);
+    await db.collection('payments').doc(toKeep.id).delete();
+    log('✅ Μετατράπηκε σε initial_balance_fixed');
+  }
+  
+  log('\n🏆 ΟΛΟΚΛΗΡΩΘΗΚΕ! Ανανέωσε το app.');
+}
+
+cleanup().catch(e => log('❌ ERROR: ' + e.message));
+</script>
+</body>
+</html>
