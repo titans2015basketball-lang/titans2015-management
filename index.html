@@ -856,7 +856,10 @@ function uid() { return Date.now().toString(36) + Math.random().toString(36).sli
 function fmtDate(d) {
   if (!d) return '';
   const dt = new Date(d);
-  return dt.toLocaleDateString('el-GR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+  const dd = String(dt.getDate()).padStart(2,'0');
+  const mm = String(dt.getMonth()+1).padStart(2,'0');
+  const yy = String(dt.getFullYear()).slice(-2);
+  return `${dd}/${mm}/${yy}`;
 }
 function initials(name) { return name.split(' ').map(w => w[0]).join('').toUpperCase().slice(0,2); }
 
@@ -1151,7 +1154,7 @@ function printPlayerCard() {
 
 ${total ? `<div class="total-box">${total}</div>` : ''}
 
-<div class="footer">Titans Basketball · Εκτύπωση ${new Date().toLocaleDateString('el-GR')}</div>
+<div class="footer">Titans Basketball · Εκτύπωση ${new Date().toLocaleDateString('el-GR',{day:'2-digit',month:'2-digit',year:'2-digit'})}</div>
 <script>window.onload=()=>{window.print();}<\/script>
 </body></html>`);
   win.document.close();
