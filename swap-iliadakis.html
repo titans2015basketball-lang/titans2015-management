@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="el">
+<head>
+<meta charset="UTF-8">
+<title>Swap Ηλιαδάκης</title>
+<style>
+  body { font-family: monospace; background: #1a1a2e; color: #eee; padding: 20px; }
+  h2 { color: #f0c040; }
+  .ok { color: #4caf50; }
+  .miss { color: #f44336; }
+  .info { color: #64b5f6; }
+  .warn { color: #ff9800; }
+  button { background: #f0c040; color: #000; border: none; padding: 10px 20px; cursor: pointer; font-size: 16px; border-radius: 6px; margin: 8px 4px; }
+  #log { white-space: pre-wrap; line-height: 1.8; }
+  .section { background: #16213e; border-radius: 8px; padding: 16px; margin: 12px 0; }
+</style>
+</head>
+<body>
+<h2>🔄 Διόρθωση Ηλιαδάκης Ιωάννης / Ευάγγελος</h2>
+<div class="section">
+  <p class="warn">Θα ανταλλάξει τα history των δύο Ηλιαδάκη ώστε να πάνε στον σωστό παίκτη.</p>
+  <button onclick="runSwap()">🔄 Εκτέλεση Swap</button>
+</div>
+<div id="log" class="section">Πάτα το κουμπί...</div>
+
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script>
+firebase.initializeApp({
+  apiKey: "AIzaSyBjcpLMBUdoTm0w2ibujwPvUXY3vwIKo_I",
+  authDomain: "titans-management.firebaseapp.com",
+  projectId: "titans-management",
+  storageBucket: "titans-management.firebasestorage.app",
+  messagingSenderId: "908542251689",
+  appId: "1:908542251689:web:567d525d4b4fa7062d0fb8"
+});
+const db = firebase.firestore();
+
+function log(msg, cls='') {
+  document.getElementById('log').innerHTML += `<span class="${cls}">${msg}</span>\n`;
+}
+
+async function runSwap() {
+  document.getElementById('log').innerHTML = '';
+  log('📥 Φόρτωση παικτών...', 'info');
+
+  const pSnap = await db.collection('players').get();
+  const players = pSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+  const giannis = players.find(p => p.name === 'Ηλιαδάκης Ιωάννης');
+  const vaggelis = players.find(p => p.name === 'Ηλιαδάκης Ευάγγελος');
+
+  if (!giannis) { log('❌ Δεν βρέθηκε Ηλιαδάκης Ιωάννης', 'miss'); return; }
+  if (!vaggelis) { log('❌ Δεν βρέθηκε Ηλιαδάκης Ευάγγελος', 'miss'); return; }
+
+  log(`✅ Ηλιαδάκης Ιωάννης ID: ${giannis.id}`, 'ok');
+  log(`✅ Ηλιαδάκης Ευάγγελος ID: ${vaggelis.id}\n`, 'ok');
+
+  // Load both history docs
+  const [hGiannis, hVaggelis] = await Promise.all([
+    db.collection('history').doc(giannis.id).get(),
+    db.collection('history').doc(vaggelis.id).get()
+  ]);
+
+  const dataGiannis = hGiannis.exists ? hGiannis.data() : null;
+  const dataVaggelis = hVaggelis.exists ? hVaggelis.data() : null;
+
+  log(`📋 History Ιωάννης: ${dataGiannis ? (dataGiannis.records?.length || 0) + ' εγγραφές' : 'ΑΔΕΙΟ'}`, dataGiannis ? 'ok' : 'miss');
+  log(`📋 History Ευάγγελος: ${dataVaggelis ? (dataVaggelis.records?.length || 0) + ' εγγραφές' : 'ΑΔΕΙΟ'}\n`, dataVaggelis ? 'ok' : 'miss');
+
+  log('🔄 Εκτέλεση swap...', 'warn');
+
+  // Write Giannis data → Vaggelis ID
+  if (dataGiannis) {
+    await db.collection('history').doc(vaggelis.id).set(dataGiannis);
+    log(`✅ History Ιωάννης → Ευάγγελος (${dataGiannis.records?.length || 0} εγγραφές)`, 'ok');
+  } else {
+    await db.collection('history').doc(vaggelis.id).delete();
+    log(`✅ Ευάγγελος history καθαρίστηκε (ήταν αδειο)`, 'ok');
+  }
+
+  // Write Vaggelis data → Giannis ID
+  if (dataVaggelis) {
+    await db.collection('history').doc(giannis.id).set(dataVaggelis);
+    log(`✅ History Ευάγγελος → Ιωάννης (${dataVaggelis.records?.length || 0} εγγραφές)`, 'ok');
+  } else {
+    await db.collection('history').doc(giannis.id).delete();
+    log(`✅ Ιωάννης history καθαρίστηκε (ήταν αδειο)`, 'ok');
+  }
+
+  log('\n✅ Ολοκληρώθηκε! Ανανέωσε την εφαρμογή και έλεγξε τις καρτέλες.', 'ok');
+}
+</script>
+</body>
+</html>
