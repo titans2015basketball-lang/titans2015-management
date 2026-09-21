@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="el">
+<head>
+<meta charset="UTF-8">
+<title>Check History - Active Players</title>
+<style>
+  body { font-family: monospace; background: #1a1a2e; color: #eee; padding: 20px; }
+  h2 { color: #f0c040; }
+  .ok { color: #4caf50; }
+  .miss { color: #f44336; }
+  .info { color: #64b5f6; }
+  .warn { color: #ff9800; }
+  button { background: #f0c040; color: #000; border: none; padding: 10px 20px; cursor: pointer; font-size: 16px; border-radius: 6px; margin: 8px 4px; }
+  #log { white-space: pre-wrap; line-height: 1.6; }
+  .section { background: #16213e; border-radius: 8px; padding: 16px; margin: 12px 0; }
+</style>
+</head>
+<body>
+<h2>🔍 Έλεγχος Ιστορικού Ενεργών Παικτών</h2>
+<div class="section">
+  <button onclick="runCheck()">▶️ Εκτέλεση Ελέγχου</button>
+  <button onclick="fixHistory()" id="fix-btn" style="display:none;background:#4caf50">🔧 Αντιγραφή Ιστορικού (Fix)</button>
+</div>
+<div id="log" class="section">Πάτα το κουμπί για να ξεκινήσει ο έλεγχος...</div>
+
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script>
+const firebaseConfig = {
+  apiKey: "AIzaSyC3sZ1bKBFsKaFOH_vZBf_cFyXoCekpyes",
+  authDomain: "titans2015-f3e60.firebaseapp.com",
+  projectId: "titans2015-f3e60",
+  storageBucket: "titans2015-f3e60.firebasestorage.app",
+  messagingSenderId: "1097779124155",
+  appId: "1:1097779124155:web:5d46faeada3f9c23ac4a38"
+};
+
+firebase.initializeApp(firebaseConfig);
+const db = firebase.firestore();
+
+let _activePlayers = [];
+let _allHistoryDocs = [];
+let _missingPlayers = [];
+let _nameToHistoryId = {};
+
+function log(msg, cls='') {
+  const el = document.getElementById('log');
+  el.innerHTML += `<span class="${cls}">${msg}</span>\n`;
+}
+
+async function runCheck() {
+  document.getElementById('log').innerHTML = '';
+  _activePlayers = [];
+  _allHistoryDocs = [];
+  _missingPlayers = [];
+  _nameToHistoryId = {};
+
+  log('📥 Φόρτωση παικτών...', 'info');
+
+  // Load all players
+  const playersSnap = await db.collection('players').get();
+  const allPlayers = playersSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+  const activePlayers = allPlayers.filter(p => p.status === 'active');
+  const inactivePlayers = allPlayers.filter(p => p.status !== 'active');
+  _activePlayers = activePlayers;
+
+  log(`✅ Σύνολο παικτών: ${allPlayers.length} (ενεργοί: ${activePlayers.length}, ανενεργοί: ${inactivePlayers.length})`, 'ok');
+
+  // Load all history docs
+  log('\n📥 Φόρτωση history collection...', 'info');
+  const histSnap = await db.collection('history').get();
+  _allHistoryDocs = histSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+  log(`✅ Βρέθηκαν ${_allHistoryDocs.length} history documents`, 'ok');
+
+  // Build name→historyId map
+  log('\n🔍 Αντιστοίχιση history με ονόματα παικτών...', 'info');
+  for (const hDoc of _allHistoryDocs) {
+    // Check if it matches an INACTIVE player by ID
+    const inactiveMatch = inactivePlayers.find(p => p.id === hDoc.id);
+    if (inactiveMatch) {
+      _nameToHistoryId[inactiveMatch.name] = hDoc.id;
+    }
+    // Check if it matches any player by name field in records
+    if (hDoc.records && hDoc.records.length > 0) {
+      const rec = hDoc.records[0];
+      if (rec.playerName) {
+        _nameToHistoryId[rec.playerName] = hDoc.id;
+      }
+    }
+    // Also check if there's a playerName field directly on the doc
+    if (hDoc.playerName) {
+      _nameToHistoryId[hDoc.playerName] = hDoc.id;
+    }
+  }
+
+  // Check active players
+  log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', '');
+  log('ΕΝΕΡΓΟΙ ΠΑΙΚΤΕΣ — Έλεγχος ιστορικού:', 'warn');
+  log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n', '');
+
+  let hasById = 0;
+  let hasByName = 0;
+  let missing = 0;
+
+  for (const p of activePlayers) {
+    const byId = _allHistoryDocs.find(h => h.id === p.id);
+    const byName = _allHistoryDocs.find(h => {
+      if (h.playerName === p.name) return true;
+      if (h.records && h.records.some(r => r.playerName === p.name)) return true;
+      return false;
+    });
+
+    if (byId) {
+      log(`  ✅ ${p.name} — history βρέθηκε (ID match: ${p.id})`, 'ok');
+      hasById++;
+    } else if (byName) {
+      log(`  ⚠️  ${p.name} — history βρέθηκε ΜΕ ΟΝΟΜΑ (history ID: ${byName.id}, player ID: ${p.id})`, 'warn');
+      _nameToHistoryId[p.name] = byName.id;
+      hasByName++;
+      _missingPlayers.push({ player: p, historyDoc: byName, needsCopy: true });
+    } else {
+      log(`  ❌ ${p.name} — ΔΕΝ ΒΡΕΘΗΚΕ history (player ID: ${p.id})`, 'miss');
+      missing++;
+      _missingPlayers.push({ player: p, historyDoc: null, needsCopy: false });
+    }
+  }
+
+  log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', '');
+  log(`ΣΥΝΟΨΗ:`, 'info');
+  log(`  ✅ Match by ID: ${hasById}`, 'ok');
+  log(`  ⚠️  Match by name (wrong ID): ${hasByName}`, 'warn');
+  log(`  ❌ Χωρίς history: ${missing}`, 'miss');
+  log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n', '');
+
+  // Show all history doc IDs
+  log('\n📋 ΟΛΑ τα history document IDs:', 'info');
+  for (const h of _allHistoryDocs) {
+    const matchActive = activePlayers.find(p => p.id === h.id);
+    const matchInactive = inactivePlayers.find(p => p.id === h.id);
+    const nameInRecs = h.records?.[0]?.playerName || h.playerName || '?';
+    if (matchActive) {
+      log(`  ✅ [ACTIVE MATCH]  ${h.id}  →  "${nameInRecs}"`, 'ok');
+    } else if (matchInactive) {
+      log(`  📦 [inactive]      ${h.id}  →  "${nameInRecs}" (${matchInactive.name})`, 'info');
+    } else {
+      log(`  ❓ [no match]      ${h.id}  →  "${nameInRecs}"`, 'warn');
+    }
+  }
+
+  if (_missingPlayers.filter(m => m.needsCopy).length > 0) {
+    log('\n🔧 Βρέθηκαν παίκτες με history σε λάθος ID — μπορείς να τα διορθώσεις!', 'warn');
+    document.getElementById('fix-btn').style.display = 'inline-block';
+  }
+}
+
+async function fixHistory() {
+  const toFix = _missingPlayers.filter(m => m.needsCopy && m.historyDoc);
+  if (toFix.length === 0) {
+    log('\n⚠️ Δεν υπάρχουν για διόρθωση', 'warn');
+    return;
+  }
+
+  log('\n🔧 ΞΕΚΙΝΑΕΙ ΔΙΟΡΘΩΣΗ — Αντιγραφή history στα σωστά IDs...', 'warn');
+
+  for (const { player, historyDoc } of toFix) {
+    try {
+      // Write history doc with correct player ID
+      const newData = { ...historyDoc };
+      delete newData.id;
+      await db.collection('history').doc(player.id).set(newData);
+      log(`  ✅ ${player.name}: αντιγράφηκε → ${player.id}`, 'ok');
+    } catch(e) {
+      log(`  ❌ ${player.name}: ΣΦΑΛΜΑ — ${e.message}`, 'miss');
+    }
+  }
+
+  log('\n✅ Ολοκληρώθηκε! Ανανέωσε την εφαρμογή και έλεγξε τις καρτέλες.', 'ok');
+}
+</script>
+</body>
+</html>
