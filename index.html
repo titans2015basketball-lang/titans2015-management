@@ -1153,7 +1153,8 @@ function printPlayerCard() {
     historyRows = `<tr><td colspan="3" style="color:#888">${histLoadEl ? histLoadEl.textContent : 'Δεν υπάρχει ιστορικό'}</td></tr>`;
   }
 
-  const today = new Date().toLocaleDateString('el-GR',{day:'2-digit',month:'2-digit',year:'2-digit'});
+  const _td = new Date();
+  const today = String(_td.getDate()).padStart(2,'0')+'/'+String(_td.getMonth()+1).padStart(2,'0')+'/'+String(_td.getFullYear()).slice(-2);
   const win = window.open('', '_blank');
   win.document.write(`<!DOCTYPE html>
 <html lang="el">
