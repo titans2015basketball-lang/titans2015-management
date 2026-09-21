@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="el">
+<head>
+<meta charset="UTF-8">
+<title>Check History v2</title>
+<style>
+  body { font-family: monospace; background: #1a1a2e; color: #eee; padding: 20px; }
+  h2 { color: #f0c040; }
+  .ok { color: #4caf50; }
+  .miss { color: #f44336; }
+  .info { color: #64b5f6; }
+  .warn { color: #ff9800; }
+  button { background: #f0c040; color: #000; border: none; padding: 10px 20px; cursor: pointer; font-size: 16px; border-radius: 6px; margin: 8px 4px; }
+  #log { white-space: pre-wrap; line-height: 1.8; }
+  .section { background: #16213e; border-radius: 8px; padding: 16px; margin: 12px 0; }
+  table { border-collapse: collapse; width: 100%; margin-top: 10px; }
+  th, td { border: 1px solid #333; padding: 6px 10px; text-align: left; font-size: 13px; }
+  th { background: #0f3460; color: #f0c040; }
+  tr:nth-child(even) { background: #0d2137; }
+  .match { color: #4caf50; font-weight: bold; }
+  .nomatch { color: #f44336; font-weight: bold; }
+  .partial { color: #ff9800; font-weight: bold; }
+</style>
+</head>
+<body>
+<h2>🔍 Διάγνωση Ιστορικού v2</h2>
+<div class="section">
+  <button onclick="runCheck()">▶️ Εκτέλεση</button>
+  <button onclick="fixMismatches()" id="fix-btn" style="display:none;background:#ff9800">🔧 Fix Αναντιστοιχιών</button>
+</div>
+<div id="output"></div>
+
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script>
+firebase.initializeApp({
+  apiKey: "AIzaSyBjcpLMBUdoTm0w2ibujwPvUXY3vwIKo_I",
+  authDomain: "titans-management.firebaseapp.com",
+  projectId: "titans-management",
+  storageBucket: "titans-management.firebasestorage.app",
+  messagingSenderId: "908542251689",
+  appId: "1:908542251689:web:567d525d4b4fa7062d0fb8"
+});
+const db = firebase.firestore();
+
+let _fixes = []; // { playerId, historyDocId, data }
+
+function norm(name) {
+  return (name || '')
+    .toLowerCase()
+    .replace(/ά/g,'α').replace(/έ/g,'ε').replace(/ή/g,'η').replace(/ί/g,'ι').replace(/ό/g,'ο').replace(/ύ/g,'υ').replace(/ώ/g,'ω')
+    .replace(/ϊ/g,'ι').replace(/ϋ/g,'υ').replace(/ΐ/g,'ι').replace(/ΰ/g,'υ')
+    .replace(/β/g,'β').replace(/γ/g,'ε').replace(/β/g,'β')
+    // Βαγγ/Ευαγγ normalization
+    .replace(/ευάγγελ/g,'βαγγελ').replace(/ευαγγελ/g,'βαγγελ').replace(/βάγγελ/g,'βαγγελ')
+    .replace(/\s+/g,' ').trim();
+}
+
+async function runCheck() {
+  const out = document.getElementById('output');
+  out.innerHTML = '<p class="info">⏳ Φόρτωση...</p>';
+  _fixes = [];
+
+  const [pSnap, hSnap] = await Promise.all([
+    db.collection('players').get(),
+    db.collection('history').get()
+  ]);
+
+  const players = pSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+  const active = players.filter(p => p.status === 'active');
+  const inactive = players.filter(p => p.status !== 'active');
+  const histDocs = hSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+  // Build name→historyDoc map (with normalization)
+  const nameMap = {}; // normalizedName → historyDoc
+  const idMap = {};   // historyDoc.id → historyDoc
+  for (const h of histDocs) {
+    idMap[h.id] = h;
+    // Get name from records or playerName field
+    const names = new Set();
+    if (h.playerName) names.add(h.playerName);
+    if (h.records) h.records.forEach(r => { if (r.playerName) names.add(r.playerName); });
+    for (const n of names) {
+      nameMap[norm(n)] = h;
+      nameMap[n.toLowerCase().trim()] = h;
+    }
+    // Also try lastName firstName swap
+    for (const n of names) {
+      const parts = n.trim().split(/\s+/);
+      if (parts.length >= 2) {
+        const swapped = parts.slice(1).join(' ') + ' ' + parts[0];
+        nameMap[norm(swapped)] = h;
+        nameMap[swapped.toLowerCase().trim()] = h;
+      }
+    }
+  }
+
+  let html = `<p class="info">👥 ${active.length} ενεργοί, ${inactive.length} ανενεργοί | 📋 ${histDocs.length} history docs</p>`;
+
+  // Active players table
+  html += `<h3 style="color:#f0c040">ΕΝΕΡΓΟΙ ΠΑΙΚΤΕΣ</h3>
+  <table>
+    <tr><th>Παίκτης</th><th>Player ID</th><th>History</th><th>History ID</th><th>Εγγραφές</th></tr>`;
+
+  let okCount = 0, fixCount = 0, missCount = 0;
+
+  for (const p of active) {
+    // Check by ID first
+    const byId = idMap[p.id];
+    if (byId) {
+      const recs = byId.records ? byId.records.length : 0;
+      html += `<tr><td>${p.name}</td><td style="font-size:11px">${p.id}</td><td class="match">✅ ID match</td><td style="font-size:11px">${byId.id}</td><td>${recs}</td></tr>`;
+      okCount++;
+      continue;
+    }
+
+    // Try name match (with normalization)
+    const pNorm = norm(p.name);
+    const pLow = p.name.toLowerCase().trim();
+    const byName = nameMap[pNorm] || nameMap[pLow];
+
+    // Also try parts
+    const parts = p.name.trim().split(/\s+/);
+    const swapped = parts.length >= 2 ? (parts.slice(1).join(' ') + ' ' + parts[0]) : p.name;
+    const bySwap = nameMap[norm(swapped)] || nameMap[swapped.toLowerCase().trim()];
+
+    const found = byName || bySwap;
+
+    if (found) {
+      const recs = found.records ? found.records.length : 0;
+      // Get original name from doc
+      const origName = found.records?.[0]?.playerName || found.playerName || '?';
+      html += `<tr><td>${p.name}</td><td style="font-size:11px">${p.id}</td><td class="partial">⚠️ Όνομα: "${origName}"</td><td style="font-size:11px">${found.id}</td><td>${recs}</td></tr>`;
+      fixCount++;
+      _fixes.push({ playerId: p.id, playerName: p.name, historyDocId: found.id, data: found });
+    } else {
+      html += `<tr><td>${p.name}</td><td style="font-size:11px">${p.id}</td><td class="nomatch">❌ Δεν βρέθηκε</td><td>—</td><td>—</td></tr>`;
+      missCount++;
+    }
+  }
+
+  html += `</table>
+  <p>✅ Σωστά: <b>${okCount}</b> | ⚠️ Fix δυνατό: <b>${fixCount}</b> | ❌ Χωρίς history: <b>${missCount}</b></p>`;
+
+  // History docs without player match
+  html += `<h3 style="color:#f0c040">HISTORY DOCS — Αντιστοίχιση</h3>
+  <table><tr><th>History ID</th><th>Όνομα στο doc</th><th>Εγγραφές</th><th>Match σε παίκτη</th></tr>`;
+
+  for (const h of histDocs) {
+    const origName = h.records?.[0]?.playerName || h.playerName || '?';
+    const recs = h.records ? h.records.length : 0;
+    const matchActive = active.find(p => p.id === h.id);
+    const matchInactive = inactive.find(p => p.id === h.id);
+
+    let matchCell = '';
+    if (matchActive) matchCell = `<span class="match">✅ Ενεργός: ${matchActive.name}</span>`;
+    else if (matchInactive) matchCell = `<span class="info">📦 Ανενεργός: ${matchInactive.name}</span>`;
+    else matchCell = `<span class="nomatch">❌ Κανένας παίκτης</span>`;
+
+    html += `<tr><td style="font-size:11px">${h.id}</td><td>${origName}</td><td>${recs}</td><td>${matchCell}</td></tr>`;
+  }
+  html += `</table>`;
+
+  out.innerHTML = html;
+
+  if (fixCount > 0) {
+    document.getElementById('fix-btn').style.display = 'inline-block';
+  }
+}
+
+async function fixMismatches() {
+  if (_fixes.length === 0) return;
+  const out = document.getElementById('output');
+  out.innerHTML += '<p class="warn">🔧 Αντιγραφή history στα σωστά IDs...</p>';
+
+  for (const fix of _fixes) {
+    try {
+      const data = { ...fix.data };
+      delete data.id;
+      await db.collection('history').doc(fix.playerId).set(data);
+      out.innerHTML += `<p class="ok">✅ ${fix.playerName}: αντιγράφηκε (${fix.historyDocId} → ${fix.playerId})</p>`;
+    } catch(e) {
+      out.innerHTML += `<p class="miss">❌ ${fix.playerName}: ${e.message}</p>`;
+    }
+  }
+  out.innerHTML += '<p class="ok">✅ Ολοκληρώθηκε! Ανανέωσε την εφαρμογή.</p>';
+}
+</script>
+</body>
+</html>
