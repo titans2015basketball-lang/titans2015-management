@@ -809,6 +809,7 @@ async function _deleteDoc(col, id) {
 
 
 let currentEditId = null;
+let _currentCardPlayerId = null;
 let gamesFilter = 'all';
 
 // ─── AUTH ─────────────────────────────────────────────────────────
@@ -1007,6 +1008,7 @@ async function togglePlayerStatus(id, currentStatus) {
 
 // ─── ΚΑΡΤΕΛΑ ΠΑΙΚΤΗ ──────────────────────────────────────────────
 async function openPlayerCard(playerId) {
+  _currentCardPlayerId = playerId;
   const player = DB.get('players').find(p => p.id === playerId);
   if (!player) return;
 
@@ -1095,66 +1097,109 @@ async function openPlayerCard(playerId) {
 }
 
 function printPlayerCard() {
-  const name = document.getElementById('pc-name').textContent;
-  const meta = document.getElementById('pc-meta').textContent;
-  const current = document.getElementById('pc-current').innerHTML;
-  const history = document.getElementById('pc-history').innerHTML;
-  const total = document.getElementById('pc-total').innerHTML;
-  const histLoading = document.getElementById('pc-history-loading');
-  const histLoadingText = histLoading.style.display !== 'none' ? histLoading.textContent : '';
+  const playerId = _currentCardPlayerId;
+  const player = DB.get('players').find(p => p.id === playerId);
+  if (!player) return;
 
+  const charges = DB.get('charges').filter(c => c.playerId === playerId);
+  const payments = DB.get('payments').filter(p => p.playerId === playerId);
+
+  // Current season section
+  let currentRows = '';
+  if (charges.length) {
+    currentRows += `<tr><td colspan="3" style="font-weight:700;color:#dc2626;padding-top:8px">Χρεώσεις</td></tr>`;
+    charges.forEach(c => {
+      currentRows += `<tr><td>${fmtDate(c.date)}</td><td>${c.description||'–'}</td><td style="color:#dc2626;font-weight:600;text-align:right">-${c.amount.toFixed(0)}€</td></tr>`;
+    });
+  }
+  if (payments.length) {
+    currentRows += `<tr><td colspan="3" style="font-weight:700;color:#16a34a;padding-top:8px">Πληρωμές</td></tr>`;
+    payments.forEach(p => {
+      const types = (p.types || p.type || '').split(',').filter(Boolean).map(t => typeLabel(t)).join(' ');
+      currentRows += `<tr><td>${fmtDate(p.date)}</td><td>${types||'–'}</td><td style="color:#16a34a;font-weight:600;text-align:right">+${p.amount.toFixed(0)}€</td></tr>`;
+    });
+  }
+  if (!currentRows) currentRows = `<tr><td colspan="3" style="color:#888">Δεν υπάρχουν εγγραφές</td></tr>`;
+
+  // History section from Firestore cache (already loaded in modal)
+  const histEl = document.getElementById('pc-history');
+  const histLoadEl = document.getElementById('pc-history-loading');
+  let historyRows = '';
+  let grandTotal = 0;
+  let totalCount = 0;
+
+  // Re-parse from DOM since we have it
+  if (histEl && histEl.style.display !== 'none') {
+    // Parse season blocks from DOM
+    const seasonDivs = histEl.querySelectorAll('div[style*="margin-bottom:12px"]');
+    seasonDivs.forEach(div => {
+      const titleEl = div.querySelector('div');
+      const seasonTitle = titleEl ? titleEl.textContent.trim() : '';
+      historyRows += `<tr><td colspan="3" style="font-weight:700;color:#6366f1;padding-top:10px;border-bottom:1px solid #6366f1">${seasonTitle}</td></tr>`;
+      const trs = div.querySelectorAll('tr');
+      trs.forEach(tr => {
+        const tds = tr.querySelectorAll('td');
+        if (tds.length >= 3) {
+          const date = tds[0].textContent.trim();
+          const desc = tds[1].textContent.trim();
+          const amt = tds[2].textContent.trim();
+          historyRows += `<tr><td style="white-space:nowrap;width:65px">${date}</td><td>${desc}</td><td style="text-align:right;white-space:nowrap;font-weight:600;color:#16a34a">${amt}</td></tr>`;
+          const amtNum = parseFloat(amt.replace('+','').replace('€',''));
+          if (!isNaN(amtNum)) { grandTotal += amtNum; totalCount++; }
+        }
+      });
+    });
+  } else {
+    historyRows = `<tr><td colspan="3" style="color:#888">${histLoadEl ? histLoadEl.textContent : 'Δεν υπάρχει ιστορικό'}</td></tr>`;
+  }
+
+  const today = new Date().toLocaleDateString('el-GR',{day:'2-digit',month:'2-digit',year:'2-digit'});
   const win = window.open('', '_blank');
   win.document.write(`<!DOCTYPE html>
 <html lang="el">
 <head>
 <meta charset="UTF-8">
-<title>Καρτέλα — ${name}</title>
+<title>Καρτέλα — ${player.name}</title>
 <style>
-  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { font-family: Inter, sans-serif; color: #1a1a2e; background: #fff; padding: 24px; font-size: 13px; }
-  .header { display: flex; align-items: center; gap: 16px; border-bottom: 2px solid #6366f1; padding-bottom: 14px; margin-bottom: 18px; }
-  .logo { font-size: 28px; }
-  .title h1 { font-size: 20px; font-weight: 700; color: #1a1a2e; }
-  .title p { font-size: 12px; color: #666; margin-top: 2px; }
-  .card { border: 1px solid #e5e7eb; border-radius: 8px; padding: 14px; margin-bottom: 14px; }
-  .card-title { font-size: 12px; font-weight: 700; color: #6366f1; margin-bottom: 10px; text-transform: uppercase; letter-spacing: .5px; }
-  table { width: 100%; border-collapse: collapse; font-size: 12px; }
-  td { padding: 4px 6px; border-bottom: 1px solid #f3f4f6; }
-  .green { color: #16a34a; font-weight: 600; }
-  .red { color: #dc2626; font-weight: 600; }
-  .season-title { font-weight: 700; font-size: 12px; color: #6366f1; margin: 10px 0 4px; }
-  .total-box { background: #f0f0ff; border-radius: 8px; padding: 12px; text-align: center; font-size: 14px; margin-top: 14px; }
-  .total-box b { color: #6366f1; font-size: 20px; }
-  .footer { margin-top: 20px; font-size: 10px; color: #aaa; text-align: right; border-top: 1px solid #eee; padding-top: 8px; }
-  @media print {
-    body { padding: 12px; }
-    @page { margin: 15mm; }
-  }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { font-family: Arial, sans-serif; color:#1a1a2e; background:#fff; padding:20px; font-size:12px; }
+  .header { display:flex; align-items:center; gap:14px; border-bottom:2px solid #6366f1; padding-bottom:12px; margin-bottom:16px; }
+  .header h1 { font-size:18px; font-weight:700; }
+  .header p { font-size:11px; color:#555; margin-top:3px; }
+  .section-title { font-size:11px; font-weight:700; color:#6366f1; text-transform:uppercase; letter-spacing:.5px; margin-bottom:8px; padding-bottom:4px; border-bottom:1px solid #e5e7eb; }
+  .card { border:1px solid #e5e7eb; border-radius:6px; padding:12px; margin-bottom:12px; }
+  table { width:100%; border-collapse:collapse; }
+  td { padding:4px 8px; border-bottom:1px solid #f3f4f6; vertical-align:top; }
+  td:first-child { width:65px; white-space:nowrap; color:#555; }
+  td:last-child { width:60px; text-align:right; white-space:nowrap; }
+  .total-box { background:#f0f0ff; border-radius:6px; padding:10px 14px; text-align:center; margin-top:12px; font-size:13px; }
+  .total-box b { color:#6366f1; font-size:18px; }
+  .footer { margin-top:16px; font-size:10px; color:#aaa; text-align:right; border-top:1px solid #eee; padding-top:6px; }
+  @media print { body{padding:8px;} @page{margin:12mm;} }
 </style>
 </head>
 <body>
 <div class="header">
-  <div class="logo">🏀</div>
-  <div class="title">
-    <h1>${name}</h1>
-    <p>${meta}</p>
+  <div style="font-size:26px">🏀</div>
+  <div>
+    <h1>${player.name}</h1>
+    <p>#${player.jersey||'–'} · ${player.status==='active'?'Ενεργός':'Ανενεργός'} · ${player.phone||''}</p>
   </div>
 </div>
 
 <div class="card">
-  <div class="card-title">💰 Τρέχουσα σεζόν — Χρεώσεις & Πληρωμές</div>
-  ${current}
+  <div class="section-title">💰 Τρέχουσα σεζόν — Χρεώσεις & Πληρωμές</div>
+  <table><tbody>${currentRows}</tbody></table>
 </div>
 
 <div class="card">
-  <div class="card-title">📋 Ιστορικό πληρωμών ανά σεζόν</div>
-  ${history || `<div style="color:#888;font-size:12px;padding:4px">${histLoadingText}</div>`}
+  <div class="section-title">📋 Ιστορικό πληρωμών ανά σεζόν</div>
+  <table><tbody>${historyRows}</tbody></table>
 </div>
 
-${total ? `<div class="total-box">${total}</div>` : ''}
+${grandTotal > 0 ? `<div class="total-box">Σύνολο πληρωμών: <b>${grandTotal.toFixed(0)}€</b> σε <b>${totalCount}</b> εγγραφές</div>` : ''}
 
-<div class="footer">Titans Basketball · Εκτύπωση ${new Date().toLocaleDateString('el-GR',{day:'2-digit',month:'2-digit',year:'2-digit'})}</div>
+<div class="footer">Titans Basketball · Εκτύπωση ${today}</div>
 <script>window.onload=()=>{window.print();}<\/script>
 </body></html>`);
   win.document.close();
