@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="el">
+<head>
+<meta charset="UTF-8">
+<title>Fix History Manual</title>
+<style>
+  body { font-family: monospace; background: #1a1a2e; color: #eee; padding: 20px; }
+  h2 { color: #f0c040; }
+  .ok { color: #4caf50; }
+  .miss { color: #f44336; }
+  .info { color: #64b5f6; }
+  .warn { color: #ff9800; }
+  button { background: #f0c040; color: #000; border: none; padding: 10px 20px; cursor: pointer; font-size: 16px; border-radius: 6px; margin: 8px 4px; }
+  #log { white-space: pre-wrap; line-height: 1.8; }
+  .section { background: #16213e; border-radius: 8px; padding: 16px; margin: 12px 0; }
+</style>
+</head>
+<body>
+<h2>🔧 Fix History — Χειροκίνητη Αντιστοίχιση</h2>
+<div class="section">
+  <p class="warn">⚠️ Αυτό θα αντιγράψει τα history documents στα σωστά player IDs για τους ενεργούς παίκτες.</p>
+  <button onclick="runFix()">🔧 Εκτέλεση Fix</button>
+</div>
+<div id="log" class="section">Πάτα Fix για να ξεκινήσει...</div>
+
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script>
+firebase.initializeApp({
+  apiKey: "AIzaSyBjcpLMBUdoTm0w2ibujwPvUXY3vwIKo_I",
+  authDomain: "titans-management.firebaseapp.com",
+  projectId: "titans-management",
+  storageBucket: "titans-management.firebasestorage.app",
+  messagingSenderId: "908542251689",
+  appId: "1:908542251689:web:567d525d4b4fa7062d0fb8"
+});
+const db = firebase.firestore();
+
+function log(msg, cls='') {
+  document.getElementById('log').innerHTML += `<span class="${cls}">${msg}</span>\n`;
+}
+
+async function runFix() {
+  document.getElementById('log').innerHTML = '';
+  log('📥 Φόρτωση παικτών...', 'info');
+
+  const pSnap = await db.collection('players').get();
+  const players = pSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+  const active = players.filter(p => p.status === 'active');
+
+  log(`✅ ${active.length} ενεργοί παίκτες φορτώθηκαν\n`, 'ok');
+
+  // Manual mapping: history doc ID → player name in app
+  // These are the mismatches found by check-history2
+  const MANUAL_MAP = [
+    { historyId: 'Ηλιαδάκης_Βαγγέλης',          playerName: 'Ηλιαδάκης Ευάγγελος' },
+    { historyId: 'Ηλιαδάκης_Γιάννης',            playerName: 'Ηλιαδάκης Ιωάννης' },
+    { historyId: 'Κασσός_Νίκος',                  playerName: 'Κασσός Νικόλαος' },
+    { historyId: 'Κεραμιδάς_Μιχάλης',            playerName: 'Κεραμιδάς Μιχαήλ' },
+    { historyId: 'Πίστης_Κώστας',                 playerName: 'Πίστης Κωνσταντίνος' },
+    { historyId: 'Τριανταφύλλου__Δημήτρης',      playerName: 'Τριανταφύλλου Δημήτριος' },
+    { historyId: 'Τσίτσος_Θοδωρής',              playerName: 'Τσίτσος Θεόδωρος' },
+    // Δημητρακόπουλος — check name in app
+    { historyId: 'Δημητρακόπουλος_Παναγιώτης',   playerName: 'Δημητρακόπουλος' },
+    { historyId: 'Δημητρακόπουλος',               playerName: 'Δημητρακόπουλος' },
+  ];
+
+  // Also try name_based docs for active players
+  // Build name→doc lookup from history
+  log('📥 Φόρτωση history collection...', 'info');
+  const hSnap = await db.collection('history').get();
+  const histDocs = {};
+  for (const d of hSnap.docs) {
+    histDocs[d.id] = { id: d.id, ...d.data() };
+  }
+  log(`✅ ${hSnap.size} history docs φορτώθηκαν\n`, 'ok');
+
+  log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', '');
+  log('ΑΝΤΙΓΡΑΦΗ HISTORY:', 'warn');
+  log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n', '');
+
+  let fixed = 0;
+  let skipped = 0;
+
+  for (const map of MANUAL_MAP) {
+    // Find the history doc
+    const hDoc = histDocs[map.historyId];
+    if (!hDoc) {
+      log(`  ⚠️  History "${map.historyId}" — δεν βρέθηκε στο Firestore`, 'warn');
+      skipped++;
+      continue;
+    }
+
+    // Find the player
+    const player = active.find(p => {
+      if (p.name === map.playerName) return true;
+      // Partial match on last name
+      const lastName = map.playerName.split(' ')[0];
+      if (p.name.startsWith(lastName) && map.playerName.includes(lastName)) return true;
+      return false;
+    });
+
+    if (!player) {
+      log(`  ⚠️  Παίκτης "${map.playerName}" — δεν βρέθηκε στους ενεργούς`, 'warn');
+      skipped++;
+      continue;
+    }
+
+    // Check if already has correct history
+    if (histDocs[player.id]) {
+      log(`  ℹ️  ${player.name} — ήδη έχει history (ID: ${player.id}), παράλειψη`, 'info');
+      skipped++;
+      continue;
+    }
+
+    // Copy to correct player ID
+    try {
+      const data = { ...hDoc };
+      delete data.id;
+      await db.collection('history').doc(player.id).set(data);
+      log(`  ✅ ${player.name}: "${map.historyId}" → ${player.id} (${hDoc.records?.length || 0} εγγραφές)`, 'ok');
+      fixed++;
+      // Update local cache
+      histDocs[player.id] = { id: player.id, ...data };
+    } catch(e) {
+      log(`  ❌ ${player.name}: ΣΦΑΛΜΑ — ${e.message}`, 'miss');
+    }
+  }
+
+  log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', '');
+  log(`ΑΠΟΤΕΛΕΣΜΑ: ${fixed} fixed, ${skipped} skipped`, 'info');
+  log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n', '');
+
+  // Now check remaining active players without history
+  log('ΕΛΕΓΧΟΣ ΕΝΕΡΓΩΝ ΧΩΡΙΣ HISTORY:', 'warn');
+  for (const p of active) {
+    if (!histDocs[p.id]) {
+      log(`  ❌ ${p.name} (${p.id}) — ακόμα χωρίς history`, 'miss');
+    }
+  }
+
+  if (fixed > 0) {
+    log('\n✅ Ανανέωσε την εφαρμογή και έλεγξε τις καρτέλες!', 'ok');
+  }
+}
+</script>
+</body>
+</html>
