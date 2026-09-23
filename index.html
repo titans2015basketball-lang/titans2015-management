@@ -1192,12 +1192,14 @@ async function openPlayerCard(playerId) {
         html += `<div style="margin-bottom:12px">
           <div style="font-weight:600;font-size:13px;color:var(--accent);margin-bottom:6px">📅 Σεζόν ${season} — <span style="color:var(--green)">${total.toFixed(0)}€</span></div>
           <table style="width:100%;font-size:12px"><tbody>`;
-        recs.sort((a,b) => a.date > b.date ? 1 : -1).forEach(r => {
+        recs.sort((a,b) => a.date > b.date ? 1 : -1).forEach((r, ri) => {
           const types = r.type ? r.type.split(',').filter(Boolean).map(t => typeLabel(t)).join(' ') : '';
+          const rIdx = records.indexOf(r);
           html += `<tr>
-            <td style="color:var(--text3);width:90px">${fmtDate(r.date)}</td>
+            <td style="color:var(--text3);width:80px">${fmtDate(r.date)}</td>
             <td style="color:var(--text2);font-size:11px">${r.description?.substring(0,80)||'–'}</td>
             <td style="color:var(--green);font-weight:600;white-space:nowrap">+${(r.amount||0).toFixed(0)}€</td>
+            <td style="width:32px;text-align:right"><button class="btn btn-danger btn-sm" style="padding:2px 6px;font-size:11px" onclick="deleteHistoryRecord('${playerId}',${rIdx})">🗑️</button></td>
           </tr>`;
         });
         html += '</tbody></table></div>';
@@ -1222,6 +1224,22 @@ async function openPlayerCard(playerId) {
     }
   } catch(e) {
     document.getElementById('pc-history-loading').textContent = '❌ Σφάλμα: ' + e.message;
+  }
+}
+
+async function deleteHistoryRecord(playerId, recordIndex) {
+  if (!confirm('Να διαγραφεί αυτή η εγγραφή από το ιστορικό;')) return;
+  try {
+    const doc = await fsDb.collection('history').doc(playerId).get();
+    if (!doc.exists) return;
+    const records = doc.data().records || [];
+    records.splice(recordIndex, 1);
+    await fsDb.collection('history').doc(playerId).set({ ...doc.data(), records });
+    toast('Εγγραφή διαγράφηκε');
+    // Reload the card
+    await openPlayerCard(playerId);
+  } catch(e) {
+    toast('Σφάλμα: ' + e.message, 'err');
   }
 }
 
