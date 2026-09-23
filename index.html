@@ -144,6 +144,10 @@ tr:hover td { background: rgba(255,255,255,.02); }
 .btn-danger:hover { background: rgba(239,68,68,.25); }
 .btn-success { background: rgba(34,197,94,.15); color: var(--green); border: 1px solid rgba(34,197,94,.2); }
 .btn-success:hover { background: rgba(34,197,94,.25); }
+.btn-warning { background: rgba(245,158,11,.15); color: #f59e0b; border: 1px solid rgba(245,158,11,.2); }
+.btn-warning:hover { background: rgba(245,158,11,.25); }
+.btn-secondary { background: rgba(139,92,246,.15); color: #a78bfa; border: 1px solid rgba(139,92,246,.2); }
+.btn-secondary:hover { background: rgba(139,92,246,.25); }
 .btn-sm { padding: 5px 10px; font-size: 12px; }
 
 /* MODAL */
@@ -431,6 +435,8 @@ tr:hover td { background: rgba(255,255,255,.02); }
         <div style="display:flex;gap:8px;flex-wrap:wrap">
           <button class="btn btn-ghost" onclick="openModal('balance-modal')">⚙️ Αρχικό υπόλοιπο</button>
           <button class="btn btn-danger" onclick="openPaymentModalExpense()">📤 Έξοδο</button>
+          <button class="btn btn-warning" onclick="openGroupChargeModal()">⚡ Ομαδική Χρέωση</button>
+          <button class="btn btn-secondary" onclick="openSingleChargeModal()">➕ Χρέωση Παίκτη</button>
           <button class="btn btn-primary" onclick="openPaymentModal()">+ Από παίκτη</button>
         </div>
       </div>
@@ -733,6 +739,67 @@ tr:hover td { background: rgba(255,255,255,.02); }
     <div class="modal-actions">
       <button class="btn btn-ghost" onclick="closeModal('balance-modal')">Ακύρωση</button>
       <button class="btn btn-primary" onclick="saveBalance()">Αποθήκευση</button>
+    </div>
+  </div>
+</div>
+
+<!-- Group Charge Modal -->
+<div class="modal-overlay" id="group-charge-modal">
+  <div class="modal" style="width:520px;max-width:98vw">
+    <h3>⚡ Ομαδική Χρέωση</h3>
+    <p style="color:var(--text3);font-size:13px;margin-bottom:16px">Το ποσό διαιρείται ισόποσα στους επιλεγμένους παίκτες.</p>
+    <div class="form-group">
+      <label class="form-label">Συνολικό ποσό (€) *</label>
+      <input class="form-input" id="gc-amount" type="number" min="0" step="0.01" placeholder="π.χ. 150"/>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Περιγραφή *</label>
+      <input class="form-input" id="gc-desc" placeholder="π.χ. Πρωτάθλημα 2026-27"/>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Ημερομηνία</label>
+      <input class="form-input" id="gc-date" type="date"/>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Παίκτες</label>
+      <div style="display:flex;gap:8px;margin-bottom:8px">
+        <button class="btn btn-ghost btn-sm" onclick="gcSelectAll(true)">Όλοι</button>
+        <button class="btn btn-ghost btn-sm" onclick="gcSelectAll(false)">Κανείς</button>
+        <span id="gc-per-player" style="margin-left:auto;color:var(--accent);font-weight:600;font-size:13px"></span>
+      </div>
+      <div id="gc-players-list" style="max-height:220px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;padding:8px;display:flex;flex-direction:column;gap:4px"></div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal('group-charge-modal')">Ακύρωση</button>
+      <button class="btn btn-primary" onclick="saveGroupCharge()">💾 Αποθήκευση</button>
+    </div>
+  </div>
+</div>
+
+<!-- Single Charge Modal -->
+<div class="modal-overlay" id="single-charge-modal">
+  <div class="modal" style="width:420px;max-width:98vw">
+    <h3>➕ Χρέωση Παίκτη</h3>
+    <p style="color:var(--text3);font-size:13px;margin-bottom:16px">Χειροκίνητη χρέωση για έναν παίκτη (π.χ. ανά παιχνίδι).</p>
+    <div class="form-group">
+      <label class="form-label">Παίκτης *</label>
+      <select class="form-select" id="sc-player"></select>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Ποσό (€) *</label>
+      <input class="form-input" id="sc-amount" type="number" min="0" step="0.01" placeholder="π.χ. 10"/>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Περιγραφή *</label>
+      <input class="form-input" id="sc-desc" placeholder="π.χ. Αγώνας 22/09/26"/>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Ημερομηνία</label>
+      <input class="form-input" id="sc-date" type="date"/>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal('single-charge-modal')">Ακύρωση</button>
+      <button class="btn btn-primary" onclick="saveSingleCharge()">💾 Αποθήκευση</button>
     </div>
   </div>
 </div>
@@ -1176,7 +1243,10 @@ function printPlayerCard() {
   .total-box { background:#f0f0ff; border-radius:6px; padding:10px 14px; text-align:center; margin-top:12px; font-size:13px; }
   .total-box b { color:#6366f1; font-size:18px; }
   .footer { margin-top:16px; font-size:10px; color:#aaa; text-align:right; border-top:1px solid #eee; padding-top:6px; }
-  @media print { body{padding:8px;} @page{margin:12mm;} }
+  @media print {
+    body{padding:8px;}
+    @page { margin:12mm; size: A4; }
+  }
 </style>
 </head>
 <body>
@@ -1622,6 +1692,96 @@ async function deletePayment(id) {
   renderDebts();
   renderDashboard();
   toast('Διαγράφηκε');
+}
+
+// ─── GROUP CHARGE ────────────────────────────────────────────────
+function openGroupChargeModal() {
+  document.getElementById('gc-amount').value = '';
+  document.getElementById('gc-desc').value = '';
+  document.getElementById('gc-date').value = new Date().toISOString().split('T')[0];
+  // Build player checkboxes
+  const active = DB.get('players').filter(p => p.status === 'active').sort((a,b) => a.name.localeCompare(b.name,'el'));
+  const list = document.getElementById('gc-players-list');
+  list.innerHTML = active.map(p => `
+    <label style="display:flex;align-items:center;gap:8px;padding:4px 6px;border-radius:6px;cursor:pointer;user-select:none">
+      <input type="checkbox" class="gc-cb" value="${p.id}" checked onchange="updateGcPerPlayer()" style="width:15px;height:15px;cursor:pointer"/>
+      <span style="font-size:13px">${p.name}</span>
+    </label>`).join('');
+  document.getElementById('gc-per-player').textContent = '';
+  document.getElementById('gc-amount').oninput = updateGcPerPlayer;
+  openModal('group-charge-modal');
+}
+
+function gcSelectAll(val) {
+  document.querySelectorAll('.gc-cb').forEach(cb => { cb.checked = val; });
+  updateGcPerPlayer();
+}
+
+function updateGcPerPlayer() {
+  const total = parseFloat(document.getElementById('gc-amount').value || 0);
+  const selected = document.querySelectorAll('.gc-cb:checked').length;
+  const el = document.getElementById('gc-per-player');
+  if (total > 0 && selected > 0) {
+    el.textContent = `→ ${(total / selected).toFixed(2)}€ / παίκτης`;
+  } else {
+    el.textContent = '';
+  }
+}
+
+async function saveGroupCharge() {
+  const total = parseFloat(document.getElementById('gc-amount').value);
+  const desc = document.getElementById('gc-desc').value.trim();
+  const date = document.getElementById('gc-date').value;
+  if (!total || !desc || !date) { toast('Συμπλήρωσε ποσό, περιγραφή και ημερομηνία', 'err'); return; }
+  const checked = [...document.querySelectorAll('.gc-cb:checked')].map(cb => cb.value);
+  if (!checked.length) { toast('Επίλεξε τουλάχιστον έναν παίκτη', 'err'); return; }
+  const perPlayer = parseFloat((total / checked.length).toFixed(2));
+  const charges = DB.get('charges');
+  const groupId = uid();
+  checked.forEach(pid => {
+    charges.push({ id: uid(), playerId: pid, groupId, amount: perPlayer, date, description: desc });
+  });
+  _cache['charges'] = charges;
+  // Save to Firestore
+  for (const c of charges.filter(c => c.groupId === groupId)) {
+    const { id, ...data } = c;
+    await fsDb.collection('charges').doc(id).set(data);
+  }
+  closeModal('group-charge-modal');
+  renderDebts();
+  renderDashboard();
+  toast(`✅ Χρεώθηκαν ${checked.length} παίκτες × ${perPlayer}€`);
+}
+
+// ─── SINGLE CHARGE ───────────────────────────────────────────────
+function openSingleChargeModal() {
+  document.getElementById('sc-amount').value = '';
+  document.getElementById('sc-desc').value = '';
+  document.getElementById('sc-date').value = new Date().toISOString().split('T')[0];
+  const active = DB.get('players').filter(p => p.status === 'active').sort((a,b) => a.name.localeCompare(b.name,'el'));
+  const sel = document.getElementById('sc-player');
+  sel.innerHTML = '<option value="">— Επίλεξε παίκτη —</option>' +
+    active.map(p => `<option value="${p.id}">${p.name}</option>`).join('');
+  openModal('single-charge-modal');
+}
+
+async function saveSingleCharge() {
+  const playerId = document.getElementById('sc-player').value;
+  const amount = parseFloat(document.getElementById('sc-amount').value);
+  const desc = document.getElementById('sc-desc').value.trim();
+  const date = document.getElementById('sc-date').value;
+  if (!playerId) { toast('Επίλεξε παίκτη', 'err'); return; }
+  if (!amount || !desc || !date) { toast('Συμπλήρωσε ποσό, περιγραφή και ημερομηνία', 'err'); return; }
+  const charge = { id: uid(), playerId, amount, date, description: desc };
+  const charges = DB.get('charges');
+  charges.push(charge);
+  _cache['charges'] = charges;
+  const { id, ...data } = charge;
+  await fsDb.collection('charges').doc(id).set(data);
+  closeModal('single-charge-modal');
+  renderDebts();
+  renderDashboard();
+  toast('✅ Χρέωση αποθηκεύτηκε');
 }
 
 function sortPayments(field) {
