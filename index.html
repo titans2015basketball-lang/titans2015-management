@@ -960,6 +960,11 @@ async function loadAll() {
 function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2); }
 function fmtDate(d) {
   if (!d) return '';
+  // Parse directly to avoid UTC→local timezone shift
+  const s = String(d).substring(0, 10); // "YYYY-MM-DD"
+  const parts = s.split('-');
+  if (parts.length === 3) return `${parts[2]}/${parts[1]}/${parts[0].slice(-2)}`;
+  // Fallback for non-ISO strings
   const dt = new Date(d);
   const dd = String(dt.getDate()).padStart(2,'0');
   const mm = String(dt.getMonth()+1).padStart(2,'0');
@@ -1147,6 +1152,18 @@ async function openPlayerCard(playerId) {
     });
     currentHtml += '</tbody></table>';
   }
+  // Υπόλοιπο τρέχουσας σεζόν
+  const curCharged = charges.reduce((s, c) => s + (c.amount || 0), 0);
+  const curPaid = payments.reduce((s, p) => s + (p.amount || 0), 0);
+  const curBal = curPaid - curCharged;
+  const curBalColor = curBal >= 0 ? 'var(--green)' : 'var(--red)';
+  if (charges.length || payments.length) {
+    currentHtml += `<div style="margin-top:10px;padding-top:8px;border-top:1px solid var(--border);font-size:13px;font-weight:600">
+      Χρεώσεις: <span style="color:var(--red)">-${curCharged.toFixed(0)}€</span>
+      &nbsp; Πληρωμές: <span style="color:var(--green)">+${curPaid.toFixed(0)}€</span>
+      &nbsp; Υπόλοιπο: <span style="color:${curBalColor};font-size:14px">${curBal >= 0 ? '+' : ''}${curBal.toFixed(0)}€</span>
+    </div>`;
+  }
   document.getElementById('pc-current').innerHTML = currentHtml;
 
   // Show modal
@@ -1188,10 +1205,18 @@ async function openPlayerCard(playerId) {
       document.getElementById('pc-history').innerHTML = html;
       document.getElementById('pc-history').style.display = 'block';
       document.getElementById('pc-history-loading').style.display = 'none';
-      // Σύνολο κάτω
+      // Σύνολο: ιστορικό + τρέχουσες πληρωμές (χωρίς διπλή μέτρηση)
+      const currentPaid = payments.reduce((s, p) => s + (p.amount || 0), 0);
+      const currentCharged = charges.reduce((s, c) => s + (c.amount || 0), 0);
+      const currentBalance = currentPaid - currentCharged; // θετικό = έχει πληρώσει παραπάνω, αρνητικό = χρωστάει
       const totalEl = document.getElementById('pc-total');
       totalEl.style.display = 'block';
-      totalEl.innerHTML = `Σύνολο πληρωμών: <b style="color:var(--accent);font-size:18px">${grandTotal.toFixed(0)}€</b> σε <b>${records.length}</b> εγγραφές`;
+      const balColor = currentBalance >= 0 ? 'var(--green)' : 'var(--red)';
+      const balSign = currentBalance >= 0 ? '+' : '';
+      totalEl.innerHTML = `
+        Ιστορικό: <b style="color:var(--accent)">${grandTotal.toFixed(0)}€</b>
+        &nbsp;|&nbsp; Τρέχουσα σεζόν: <b style="color:${balColor}">${balSign}${currentBalance.toFixed(0)}€</b>
+        &nbsp;|&nbsp; Σύνολο: <b style="color:var(--accent);font-size:17px">${(grandTotal + currentBalance).toFixed(0)}€</b>`;
     } else {
       document.getElementById('pc-history-loading').textContent = '📭 Δεν υπάρχει ιστορικό για αυτόν τον παίκτη';
     }
