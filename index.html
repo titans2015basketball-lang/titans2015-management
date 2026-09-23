@@ -441,51 +441,88 @@ tr:hover td { background: rgba(255,255,255,.02); }
         </div>
       </div>
 
-      <!-- Φίλτρα -->
-      <div class="card" style="margin-bottom:12px;padding:14px">
-        <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
-          <div style="flex:1;min-width:140px">
-            <select class="form-select" id="filter-pay-player" onchange="renderPayments()" style="padding:8px 10px;font-size:13px">
-              <option value="">👤 Όλοι οι παίκτες</option>
-            </select>
+      <!-- Tabs -->
+      <div style="display:flex;gap:0;margin-bottom:16px;border-bottom:2px solid var(--border)">
+        <button id="pay-tab-payments" onclick="switchPayTab('payments')" style="padding:10px 20px;font-size:14px;font-weight:600;background:none;border:none;border-bottom:3px solid var(--accent);margin-bottom:-2px;color:var(--accent);cursor:pointer">💰 Πληρωμές</button>
+        <button id="pay-tab-charges" onclick="switchPayTab('charges')" style="padding:10px 20px;font-size:14px;font-weight:600;background:none;border:none;border-bottom:3px solid transparent;margin-bottom:-2px;color:var(--text3);cursor:pointer">📋 Χρεώσεις</button>
+      </div>
+
+      <!-- TAB: Πληρωμές -->
+      <div id="pay-panel-payments">
+        <!-- Φίλτρα -->
+        <div class="card" style="margin-bottom:12px;padding:14px">
+          <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+            <div style="flex:1;min-width:140px">
+              <select class="form-select" id="filter-pay-player" onchange="renderPayments()" style="padding:8px 10px;font-size:13px">
+                <option value="">👤 Όλοι οι παίκτες</option>
+              </select>
+            </div>
+            <div style="flex:1;min-width:130px">
+              <select class="form-select" id="filter-pay-type" onchange="renderPayments()" style="padding:8px 10px;font-size:13px">
+                <option value="">📋 Όλοι τύποι</option>
+                <option value="πρωτάθλημα">🏆 Πρωτάθλημα</option>
+                <option value="κύπελλο">🥇 Κύπελλο</option>
+                <option value="δελτίο">📄 Δελτίο</option>
+                <option value="εμφάνιση">👕 Εμφάνιση</option>
+                <option value="φούτερ">🧥 Φούτερ</option>
+                <option value="expense">📤 Έξοδα ομάδας</option>
+                <option value="άλλο">💬 Άλλο</option>
+              </select>
+            </div>
+            <div style="flex:1;min-width:120px">
+              <input class="form-input" type="date" id="filter-pay-from" onchange="renderPayments()" style="padding:8px 10px;font-size:13px" placeholder="Από"/>
+            </div>
+            <div style="flex:1;min-width:120px">
+              <input class="form-input" type="date" id="filter-pay-to" onchange="renderPayments()" style="padding:8px 10px;font-size:13px" placeholder="Έως"/>
+            </div>
+            <button class="btn btn-ghost btn-sm" onclick="clearPayFilters()">✕ Καθαρισμός</button>
           </div>
-          <div style="flex:1;min-width:130px">
-            <select class="form-select" id="filter-pay-type" onchange="renderPayments()" style="padding:8px 10px;font-size:13px">
-              <option value="">📋 Όλοι τύποι</option>
-              <option value="πρωτάθλημα">🏆 Πρωτάθλημα</option>
-              <option value="κύπελλο">🥇 Κύπελλο</option>
-              <option value="δελτίο">📄 Δελτίο</option>
-              <option value="εμφάνιση">👕 Εμφάνιση</option>
-              <option value="φούτερ">🧥 Φούτερ</option>
-              <option value="expense">📤 Έξοδα ομάδας</option>
-              <option value="άλλο">💬 Άλλο</option>
-            </select>
-          </div>
-          <div style="flex:1;min-width:120px">
-            <input class="form-input" type="date" id="filter-pay-from" onchange="renderPayments()" style="padding:8px 10px;font-size:13px" placeholder="Από"/>
-          </div>
-          <div style="flex:1;min-width:120px">
-            <input class="form-input" type="date" id="filter-pay-to" onchange="renderPayments()" style="padding:8px 10px;font-size:13px" placeholder="Έως"/>
-          </div>
-          <button class="btn btn-ghost btn-sm" onclick="clearPayFilters()">✕ Καθαρισμός</button>
+        </div>
+        <div class="card">
+          <div id="pay-summary" style="display:flex;gap:16px;margin-bottom:14px;flex-wrap:wrap"></div>
+          <table>
+            <thead>
+              <tr>
+                <th onclick="sortPayments('date')" style="cursor:pointer">Ημ/νία ↕</th>
+                <th onclick="sortPayments('name')" style="cursor:pointer">Παίκτης/Έξοδο ↕</th>
+                <th onclick="sortPayments('amount')" style="cursor:pointer">Ποσό ↕</th>
+                <th>Αφορά</th>
+                <th>Σημείωση</th>
+                <th>Ενέργεια</th>
+              </tr>
+            </thead>
+            <tbody id="payments-table"><tr><td colspan="6" style="text-align:center;color:var(--text3);padding:30px">Φόρτωση...</td></tr></tbody>
+          </table>
         </div>
       </div>
 
-      <div class="card">
-        <div id="pay-summary" style="display:flex;gap:16px;margin-bottom:14px;flex-wrap:wrap"></div>
-        <table>
-          <thead>
-            <tr>
-              <th onclick="sortPayments('date')" style="cursor:pointer">Ημ/νία ↕</th>
-              <th onclick="sortPayments('name')" style="cursor:pointer">Παίκτης/Έξοδο ↕</th>
-              <th onclick="sortPayments('amount')" style="cursor:pointer">Ποσό ↕</th>
-              <th>Αφορά</th>
-              <th>Σημείωση</th>
-              <th>Ενέργεια</th>
-            </tr>
-          </thead>
-          <tbody id="payments-table"><tr><td colspan="6" style="text-align:center;color:var(--text3);padding:30px">Φόρτωση...</td></tr></tbody>
-        </table>
+      <!-- TAB: Χρεώσεις -->
+      <div id="pay-panel-charges" style="display:none">
+        <div class="card" style="margin-bottom:12px;padding:14px">
+          <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+            <div style="flex:1;min-width:160px">
+              <select class="form-select" id="filter-charge-player" onchange="renderChargesTable()" style="padding:8px 10px;font-size:13px">
+                <option value="">👤 Όλοι οι παίκτες</option>
+              </select>
+            </div>
+            <button class="btn btn-ghost btn-sm" onclick="document.getElementById('filter-charge-player').value='';renderChargesTable()">✕ Καθαρισμός</button>
+          </div>
+        </div>
+        <div class="card">
+          <div id="charges-summary" style="display:flex;gap:16px;margin-bottom:14px;flex-wrap:wrap"></div>
+          <table>
+            <thead>
+              <tr>
+                <th>Ημ/νία</th>
+                <th>Παίκτης</th>
+                <th>Ποσό</th>
+                <th>Περιγραφή</th>
+                <th>Ενέργεια</th>
+              </tr>
+            </thead>
+            <tbody id="charges-table"><tr><td colspan="5" style="text-align:center;color:var(--text3);padding:30px">Φόρτωση...</td></tr></tbody>
+          </table>
+        </div>
       </div>
     </div>
 
@@ -908,7 +945,7 @@ function showPage(name) {
   if (name === 'dashboard') renderDashboard();
   if (name === 'players') renderPlayers();
   if (name === 'games') renderGames();
-  if (name === 'payments') renderPayments();
+  if (name === 'payments') { renderPayments(); renderChargesTable(); }
   if (name === 'debts') renderDebts();
 }
 
@@ -1782,6 +1819,74 @@ async function saveSingleCharge() {
   renderDebts();
   renderDashboard();
   toast('✅ Χρέωση αποθηκεύτηκε');
+}
+
+// ─── PAYMENT TABS ────────────────────────────────────────────────
+function switchPayTab(tab) {
+  const tabs = ['payments', 'charges'];
+  tabs.forEach(t => {
+    const btn = document.getElementById(`pay-tab-${t}`);
+    const panel = document.getElementById(`pay-panel-${t}`);
+    if (t === tab) {
+      btn.style.borderBottomColor = 'var(--accent)';
+      btn.style.color = 'var(--accent)';
+      panel.style.display = '';
+    } else {
+      btn.style.borderBottomColor = 'transparent';
+      btn.style.color = 'var(--text3)';
+      panel.style.display = 'none';
+    }
+  });
+  if (tab === 'charges') renderChargesTable();
+}
+
+function renderChargesTable() {
+  const players = DB.get('players');
+  let charges = [...DB.get('charges')].sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+
+  // Fill player filter
+  const sel = document.getElementById('filter-charge-player');
+  if (sel) {
+    const cur = sel.value;
+    sel.innerHTML = '<option value="">👤 Όλοι οι παίκτες</option>' +
+      players.filter(p => p.status === 'active').sort((a,b) => a.name.localeCompare(b.name,'el'))
+        .map(p => `<option value="${p.id}"${p.id===cur?' selected':''}>${p.name}</option>`).join('');
+  }
+
+  const fPlayer = document.getElementById('filter-charge-player')?.value;
+  if (fPlayer) charges = charges.filter(c => c.playerId === fPlayer);
+
+  const total = charges.reduce((s, c) => s + (c.amount || 0), 0);
+  const sumEl = document.getElementById('charges-summary');
+  if (sumEl) sumEl.innerHTML = `
+    <span style="font-size:13px;color:var(--red)">📋 Σύνολο χρεώσεων: <b>${total.toFixed(0)}€</b></span>
+    <span style="font-size:13px;color:var(--text3)">(${charges.length} εγγραφές)</span>
+  `;
+
+  const tb = document.getElementById('charges-table');
+  if (!charges.length) {
+    tb.innerHTML = '<tr><td colspan="5"><div class="empty-state"><div class="emoji">📋</div>Δεν υπάρχουν χρεώσεις</div></td></tr>';
+    return;
+  }
+  tb.innerHTML = charges.map(c => {
+    const p = players.find(x => x.id === c.playerId);
+    return `<tr>
+      <td>${fmtDate(c.date)}</td>
+      <td><b>${p?.name || '–'}</b></td>
+      <td style="color:var(--red);font-weight:600">-${(c.amount||0).toFixed(0)}€</td>
+      <td style="color:var(--text2)">${c.description || '–'}</td>
+      <td><button class="btn btn-danger btn-sm" onclick="deleteCharge('${c.id}')">🗑️</button></td>
+    </tr>`;
+  }).join('');
+}
+
+async function deleteCharge(id) {
+  if (!confirm('Να διαγραφεί η χρέωση;')) return;
+  await _deleteDoc('charges', id);
+  renderChargesTable();
+  renderDebts();
+  renderDashboard();
+  toast('Χρέωση διαγράφηκε');
 }
 
 function sortPayments(field) {
