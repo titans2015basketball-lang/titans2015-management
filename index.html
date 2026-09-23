@@ -276,6 +276,7 @@ tr:hover td { background: rgba(255,255,255,.02); }
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 </head>
 <body>
 
@@ -528,9 +529,15 @@ tr:hover td { background: rgba(255,255,255,.02); }
 
     <!-- DEBTS -->
     <div class="page" id="page-debts">
-      <div class="page-header">
-        <h2>Χρέη & Υπόλοιπα</h2>
-        <p>Τι χρωστάει ο κάθε παίκτης</p>
+      <div class="page-header" style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:12px">
+        <div>
+          <h2>Χρέη & Υπόλοιπα</h2>
+          <p>Τι χρωστάει ο κάθε παίκτης</p>
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <button class="btn btn-success" onclick="exportDebtsExcel()">📊 Excel</button>
+          <button class="btn btn-warning" onclick="openArchiveModal()">🗄️ Αρχειοθέτηση Σεζόν</button>
+        </div>
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
         <div class="card">
@@ -837,6 +844,25 @@ tr:hover td { background: rgba(255,255,255,.02); }
     <div class="modal-actions">
       <button class="btn btn-ghost" onclick="closeModal('single-charge-modal')">Ακύρωση</button>
       <button class="btn btn-primary" onclick="saveSingleCharge()">💾 Αποθήκευση</button>
+    </div>
+  </div>
+</div>
+
+<!-- Archive Season Modal -->
+<div class="modal-overlay" id="archive-modal">
+  <div class="modal" style="width:440px;max-width:98vw">
+    <h3 style="margin-bottom:16px">🗄️ Αρχειοθέτηση Σεζόν</h3>
+    <p style="color:var(--text2);font-size:14px;margin-bottom:20px;line-height:1.6">
+      Όλες οι χρεώσεις και πληρωμές της τρέχουσας σεζόν θα μεταφερθούν στο ιστορικό κάθε παίκτη και η σεζόν θα μηδενιστεί.
+    </p>
+    <div class="form-group" style="margin-bottom:20px">
+      <label class="form-label">Όνομα σεζόν (π.χ. 2025-26)</label>
+      <input class="form-input" id="archive-season-name" placeholder="2025-26"/>
+    </div>
+    <div id="archive-preview" style="background:var(--bg3);border-radius:8px;padding:12px;margin-bottom:20px;font-size:13px;color:var(--text2);display:none"></div>
+    <div style="display:flex;gap:8px;justify-content:flex-end">
+      <button class="btn btn-ghost" onclick="closeModal('archive-modal')">Ακύρωση</button>
+      <button class="btn btn-danger" onclick="confirmArchive()">🗄️ Αρχειοθέτηση</button>
     </div>
   </div>
 </div>
@@ -2127,6 +2153,163 @@ function renderDebts() {
       </td>
     </tr>`;
   }).join('');
+}
+
+// ─── EXCEL EXPORT ────────────────────────────────────────────────
+function exportDebtsExcel() {
+  if (typeof XLSX === 'undefined') { toast('Το Excel δεν φορτώθηκε ακόμα, δοκίμασε ξανά σε λίγο', 'err'); return; }
+  const players = DB.get('players');
+  const charges = DB.get('charges');
+  const payments = DB.get('payments');
+
+  const today = new Date();
+  const dd = String(today.getDate()).padStart(2,'0');
+  const mm = String(today.getMonth()+1).padStart(2,'0');
+  const yyyy = today.getFullYear();
+
+  // Summary sheet rows
+  const summaryRows = [['Παίκτης', 'Ν.', 'Τηλ.', 'Χρεώσεις (€)', 'Πληρωμές (€)', 'Υπόλοιπο (€)', 'Κατάσταση']];
+  players.forEach(p => {
+    const ch = charges.filter(c => c.playerId === p.id).reduce((s, c) => s + (c.amount || 0), 0);
+    const pa = payments.filter(x => x.playerId === p.id).reduce((s, x) => s + (x.amount || 0), 0);
+    const bal = pa - ch;
+    const status = bal < 0 ? 'ΧΡΕΩΣΤΗΣ' : bal > 0 ? 'ΠΛΕΟΝΑΣΜΑ' : 'ΜΗΔΕΝ';
+    summaryRows.push([p.name, p.jersey || '', p.phone || '', ch, pa, bal, status]);
+  });
+  // Totals row
+  const totCharged = players.reduce((s, p) => s + charges.filter(c => c.playerId === p.id).reduce((a, c) => a + (c.amount || 0), 0), 0);
+  const totPaid    = players.reduce((s, p) => s + payments.filter(x => x.playerId === p.id).reduce((a, x) => a + (x.amount || 0), 0), 0);
+  summaryRows.push(['ΣΥΝΟΛΟ', '', '', totCharged, totPaid, totPaid - totCharged, '']);
+
+  // Charges detail sheet
+  const chargeRows = [['Παίκτης', 'Ημερομηνία', 'Περιγραφή', 'Ποσό (€)']];
+  charges.sort((a, b) => (a.date || '') < (b.date || '') ? 1 : -1).forEach(c => {
+    const p = players.find(x => x.id === c.playerId);
+    if (!p) return;
+    chargeRows.push([p.name, c.date || '', c.description || '', c.amount || 0]);
+  });
+
+  // Payments detail sheet
+  const payRows = [['Παίκτης', 'Ημερομηνία', 'Σημείωση', 'Ποσό (€)']];
+  payments.sort((a, b) => (a.date || '') < (b.date || '') ? 1 : -1).forEach(x => {
+    const p = players.find(pl => pl.id === x.playerId);
+    if (!p) return;
+    payRows.push([p.name, x.date || '', x.note || '', x.amount || 0]);
+  });
+
+  const wb = XLSX.utils.book_new();
+
+  // Helper to create & style a sheet
+  function makeSheet(rows, sheetName) {
+    const ws = XLSX.utils.aoa_to_sheet(rows);
+    // Column widths
+    ws['!cols'] = [{ wch: 28 }, { wch: 8 }, { wch: 14 }, { wch: 16 }, { wch: 16 }, { wch: 14 }, { wch: 12 }];
+    XLSX.utils.book_append_sheet(wb, ws, sheetName);
+  }
+
+  makeSheet(summaryRows, 'Υπόλοιπα');
+  makeSheet(chargeRows, 'Χρεώσεις');
+  makeSheet(payRows, 'Πληρωμές');
+
+  XLSX.writeFile(wb, `TITANS_Χρεη_${dd}-${mm}-${yyyy}.xlsx`);
+  toast('📊 Excel λήφθηκε!');
+}
+
+// ─── SEASON ARCHIVE ──────────────────────────────────────────────
+function openArchiveModal() {
+  const players = DB.get('players');
+  const charges = DB.get('charges');
+  const payments = DB.get('payments');
+  const totalCh = charges.reduce((s, c) => s + (c.amount || 0), 0);
+  const totalPa = payments.reduce((s, x) => s + (x.amount || 0), 0);
+  const preview = document.getElementById('archive-preview');
+  if (charges.length || payments.length) {
+    preview.style.display = '';
+    preview.innerHTML = `📋 <b>${charges.length}</b> χρεώσεις (${totalCh.toFixed(0)}€) &nbsp;·&nbsp; 💰 <b>${payments.length}</b> πληρωμές (${totalPa.toFixed(0)}€)<br>
+      θα μεταφερθούν στο ιστορικό <b>${players.length}</b> παικτών.`;
+  } else {
+    preview.style.display = '';
+    preview.innerHTML = '⚠️ Δεν υπάρχουν δεδομένα τρέχουσας σεζόν για αρχειοθέτηση.';
+  }
+  // Suggest current season name
+  const yr = new Date().getFullYear();
+  const mo = new Date().getMonth() + 1; // 1-12
+  const seasonName = mo >= 9 ? `${yr}-${String(yr+1).slice(-2)}` : `${yr-1}-${String(yr).slice(-2)}`;
+  document.getElementById('archive-season-name').value = seasonName;
+  openModal('archive-modal');
+}
+
+async function confirmArchive() {
+  const seasonName = document.getElementById('archive-season-name').value.trim();
+  if (!seasonName) { toast('Βάλε όνομα σεζόν', 'err'); return; }
+
+  const players = DB.get('players');
+  const charges = DB.get('charges');
+  const payments = DB.get('payments');
+
+  if (!charges.length && !payments.length) {
+    toast('Δεν υπάρχουν δεδομένα για αρχειοθέτηση', 'err');
+    return;
+  }
+
+  const archiveBtn = document.querySelector('#archive-modal .btn-danger');
+  if (archiveBtn) { archiveBtn.disabled = true; archiveBtn.textContent = '⏳ Αρχειοθέτηση…'; }
+
+  try {
+    const dateNow = new Date().toISOString().substring(0, 10);
+
+    for (const player of players) {
+      const pCharges  = charges.filter(c => c.playerId === player.id);
+      const pPayments = payments.filter(x => x.playerId === player.id);
+      if (!pCharges.length && !pPayments.length) continue;
+
+      const totalCharged = pCharges.reduce((s, c) => s + (c.amount || 0), 0);
+      const totalPaid    = pPayments.reduce((s, x) => s + (x.amount || 0), 0);
+      const balance      = totalPaid - totalCharged;
+
+      // Build record to add to history
+      const newRecord = {
+        season: seasonName,
+        date: dateNow,
+        description: `Σεζόν ${seasonName}`,
+        charged: totalCharged,
+        paid: totalPaid,
+        amount: balance,  // net (positive = player is ahead, negative = owes)
+        charges: pCharges.map(c => ({ date: c.date, description: c.description, amount: c.amount })),
+        payments: pPayments.map(x => ({ date: x.date, note: x.note, amount: x.amount })),
+      };
+
+      // Fetch & update history doc
+      const histDoc = await fsDb.collection('history').doc(player.id).get();
+      const existing = histDoc.exists ? (histDoc.data().records || []) : [];
+      existing.push(newRecord);
+      await fsDb.collection('history').doc(player.id).set({ records: existing });
+    }
+
+    // Delete all charges and payments from Firestore
+    const batch1 = fsDb.batch();
+    charges.forEach(c => batch1.delete(fsDb.collection('charges').doc(c.id)));
+    await batch1.commit();
+
+    const batch2 = fsDb.batch();
+    payments.forEach(x => batch2.delete(fsDb.collection('payments').doc(x.id)));
+    await batch2.commit();
+
+    // Update local cache
+    _cache['charges'] = [];
+    _cache['payments'] = [];
+
+    closeModal('archive-modal');
+    renderDebts();
+    renderDashboard();
+    if (typeof renderPayments === 'function') renderPayments();
+    if (typeof renderChargesTable === 'function') renderChargesTable();
+    toast(`✅ Σεζόν ${seasonName} αρχειοθετήθηκε!`);
+  } catch(e) {
+    toast('Σφάλμα: ' + e.message, 'err');
+  } finally {
+    if (archiveBtn) { archiveBtn.disabled = false; archiveBtn.textContent = '🗄️ Αρχειοθέτηση'; }
+  }
 }
 
 // ─── MODAL HELPERS ───────────────────────────────────────────────
